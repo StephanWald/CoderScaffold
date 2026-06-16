@@ -80,13 +80,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (to be populated by roadmapper) | | |
+| SRV-01 | Phase 1 | Pending |
+| SRV-02 | Phase 1 | Pending |
+| SRV-03 | Phase 1 | Pending |
+| SRV-04 | Phase 1 | Pending |
+| SRV-05 | Phase 1 | Pending |
+| CFG-01 | Phase 1 | Pending |
+| CFG-02 | Phase 1 | Pending |
+| CFG-03 | Phase 1 | Pending |
+| CFG-04 | Phase 1 | Pending |
+| CFG-05 | Phase 1 | Pending |
+| OPS-01 | Phase 1 | Pending |
+| OPS-02 | Phase 1 | Pending |
+| OPS-03 | Phase 1 | Pending |
+| BAK-01 | Phase 2 | Pending |
+| BAK-02 | Phase 2 | Pending |
+| BAK-03 | Phase 2 | Pending |
+| TPL-01 | Phase 3 | Pending |
+| TPL-02 | Phase 3 | Pending |
+| TPL-03 | Phase 3 | Pending |
+| TPL-04 | Phase 3 | Pending |
+| TPL-05 | Phase 3 | Pending |
+| TPL-06 | Phase 3 | Pending |
 
 **Coverage:**
-- v1 requirements: 23 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 23 ⚠️
+- v1 requirements: 22 total (SRV-01..05, CFG-01..05, OPS-01..03, BAK-01..03, TPL-01..06)
+- Mapped to phases: 22
+- Unmapped: 0 ✓
+
+Note: Original file stated "23 total" — recount of explicit IDs yields 22. No orphans.
 
 ---
 *Requirements defined: 2026-06-16*
-*Last updated: 2026-06-16 after initial definition*
+*Last updated: 2026-06-16 after roadmap creation (traceability populated)*
