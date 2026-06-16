@@ -48,7 +48,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # The PostgreSQL password (useful to connect to the database)
       POSTGRES_DB: ${POSTGRES_DB:-coder} # The PostgreSQL default database (automatically created at first launch)
     volumes:
-      - ${CODER_PG_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data # SRV-01 (host bind mount; pre-create + chown 999:999 — see README/OPS-03)
+      - ${CODER_PG_DATA_DIR:-coder_pgdata}:/var/lib/postgresql/data # SRV-01; default named volume (cross-platform, no chown). Set CODER_PG_DATA_DIR=./data/postgres for a host bind mount (Linux; requires chown 999:999 — see README/OPS-03)
     healthcheck:
       test:
         [
@@ -60,4 +60,6 @@ services:
       retries: 5
 volumes:
   coder_home:
-  # NOTE: coder_data removed — Postgres data now on host bind mount (SRV-01)
+  coder_pgdata:
+  # NOTE: coder_data removed. Postgres data defaults to the coder_pgdata named volume (SRV-01, cross-platform).
+  # Set CODER_PG_DATA_DIR=./data/postgres to opt into a host bind mount (Linux; requires chown 999:999 — see README/OPS-03).
