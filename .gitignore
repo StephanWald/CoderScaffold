@@ -1,0 +1,8 @@
+# Local environment — real secrets, never commit
+.env
+
+# Postgres data directory — large binary files
+data/
+
+# Backup files (Phase 2 scripts will write here)
+backups/
