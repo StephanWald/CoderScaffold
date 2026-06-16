@@ -29,7 +29,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A new contributor can clone the repo, copy `.env.example` to `.env`, fill in their values, and bring up the stack — every required variable is documented with a safe placeholder
   4. The README documents the external reverse-proxy contract (HTTP `:7080`, wildcard TLS, `Host`/WebSocket headers) and the first-admin bootstrap sequence clearly enough for an operator to follow without prior Coder knowledge
   5. After a host reboot, both services restart automatically and the Coder healthcheck returns healthy before dependent services start
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 01-01-PLAN.md — Walking Skeleton: harden compose.yaml (bind mount, pinned v2.33.8, restart, /healthz healthcheck, env-sourced config) + .gitignore [Wave 1]
+- [ ] 01-02-PLAN.md — Configuration contract + operator runbook: .env.example + README.md (chown prerequisite, first-admin bootstrap, reverse-proxy contract) [Wave 2]
 
 ### Phase 2: Backup & Restore Scripts
 **Goal**: An operator can take a verified backup of the Coder database and restore it into a fresh instance without interactive prompts
@@ -63,6 +66,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Compose Hardening & Configuration | 0/TBD | Not started | - |
+| 1. Compose Hardening & Configuration | 0/2 | Not started | - |
 | 2. Backup & Restore Scripts | 0/TBD | Not started | - |
 | 3. Docker Workspace Template | 0/TBD | Not started | - |
