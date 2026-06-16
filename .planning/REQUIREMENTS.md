@@ -13,7 +13,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SRV-02**: Coder server image is pinned to a specific version (`ghcr.io/coder/coder:v2.33.8`), with the reference overridable via `CODER_REPO`/`CODER_VERSION`
 - [x] **SRV-03**: Both services declare a restart policy (`unless-stopped`) so they recover after host reboot
 - [x] **SRV-04**: Coder server has a healthcheck so `depends_on` and operators can detect readiness
-- [ ] **SRV-05**: Operator can set Postgres bind-mount ownership to UID 999 (documented pre-`up` `chown` step) so the database initializes cleanly
+- [x] **SRV-05**: Operator can set Postgres bind-mount ownership to UID 999 (documented pre-`up` `chown` step) so the database initializes cleanly
 
 ### Configuration
 
@@ -84,7 +84,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SRV-02 | Phase 1 | Complete |
 | SRV-03 | Phase 1 | Complete |
 | SRV-04 | Phase 1 | Complete |
-| SRV-05 | Phase 1 | Pending |
+| SRV-05 | Phase 1 | Complete |
 | CFG-01 | Phase 1 | Pending |
 | CFG-02 | Phase 1 | Complete |
 | CFG-03 | Phase 1 | Complete |
