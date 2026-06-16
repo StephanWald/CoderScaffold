@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plansPlans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Walking Skeleton: harden compose.yaml (bind mount, pinned v2.33.8, restart, /healthz healthcheck, env-sourced config) + .gitignore [Wave 1]
+- [x] 01-01-PLAN.md — Walking Skeleton: harden compose.yaml (bind mount, pinned v2.33.8, restart, /healthz healthcheck, env-sourced config) + .gitignore [Wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -80,6 +80,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Compose Hardening & Configuration | 0/2 | Not started | - |
+| 1. Compose Hardening & Configuration | 1/2 | In Progress|  |
 | 2. Backup & Restore Scripts | 0/TBD | Not started | - |
 | 3. Docker Workspace Template | 0/TBD | Not started | - |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-06-16T12:43:07.308Z"
-last_activity: 2026-06-16 — Roadmap created; 22 v1 requirements mapped across 3 phases
+stopped_at: "Paused at checkpoint Task 3 human-verify: compose stack validation"
+last_updated: "2026-06-16T12:55:17.451Z"
+last_activity: 2026-06-16 -- Phase 01 execution started
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16)
 
 **Core value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
-**Current focus:** Phase 1 — Compose Hardening & Configuration
+**Current focus:** Phase 01 — compose-hardening-configuration
 
 ## Current Position
 
-Phase: 1 of 3 (Compose Hardening & Configuration)
-Plan: 0 of TBD in current phase
-Status: Ready to execute
-Last activity: 2026-06-16 — Roadmap created; 22 v1 requirements mapped across 3 phases
+Phase: 01 (compose-hardening-configuration) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 01
+Last activity: 2026-06-16 -- Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+| Phase 01-compose-hardening-configuration P01 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,9 @@ Recent decisions affecting current work:
 - Pre-roadmap: TLS via external reverse proxy — scaffold is HTTP-only on :7080
 - Pre-roadmap: Backup = scripts only, cron-friendly — no scheduler in v1
 - Pre-roadmap: AI/MCP deferred to v2 — v1 focuses on production foundation
+- [Phase 01-01]: Pin Coder image default to v2.33.8 (stable track) via CODER_VERSION variable; keep CODER_REPO overridable
+- [Phase 01-01]: Replace coder_data named volume with host bind mount at CODER_PG_DATA_DIR; chown 999:999 required pre-up
+- [Phase 01-01]: CODER_ACCESS_URL defaults to http://127.0.0.1:7080 (full URL with protocol required by Coder)
 
 ### Pending Todos
 
@@ -84,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-16T12:15:59.459Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-compose-hardening-configuration/01-CONTEXT.md
+Last session: 2026-06-16T12:55:08.423Z
+Stopped at: Paused at checkpoint Task 3 human-verify: compose stack validation
+Resume file: .planning/phases/01-compose-hardening-configuration/01-01-SUMMARY.md

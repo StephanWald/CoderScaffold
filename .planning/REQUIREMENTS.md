@@ -9,19 +9,19 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Server & Persistence
 
-- [ ] **SRV-01**: Postgres data persists on a host-disk bind mount at a configurable path (`CODER_PG_DATA_DIR`, default `./data/postgres`), surviving container recreation
-- [ ] **SRV-02**: Coder server image is pinned to a specific version (`ghcr.io/coder/coder:v2.33.8`), with the reference overridable via `CODER_REPO`/`CODER_VERSION`
-- [ ] **SRV-03**: Both services declare a restart policy (`unless-stopped`) so they recover after host reboot
-- [ ] **SRV-04**: Coder server has a healthcheck so `depends_on` and operators can detect readiness
+- [x] **SRV-01**: Postgres data persists on a host-disk bind mount at a configurable path (`CODER_PG_DATA_DIR`, default `./data/postgres`), surviving container recreation
+- [x] **SRV-02**: Coder server image is pinned to a specific version (`ghcr.io/coder/coder:v2.33.8`), with the reference overridable via `CODER_REPO`/`CODER_VERSION`
+- [x] **SRV-03**: Both services declare a restart policy (`unless-stopped`) so they recover after host reboot
+- [x] **SRV-04**: Coder server has a healthcheck so `depends_on` and operators can detect readiness
 - [ ] **SRV-05**: Operator can set Postgres bind-mount ownership to UID 999 (documented pre-`up` `chown` step) so the database initializes cleanly
 
 ### Configuration
 
 - [ ] **CFG-01**: A committed `.env.example` documents every configuration variable with safe placeholder values
-- [ ] **CFG-02**: A local `.env` (gitignored) supplies real configuration and secrets to compose
-- [ ] **CFG-03**: `CODER_ACCESS_URL` is set from `.env` to the public-facing URL, disabling Coder's convenience dev tunnel
-- [ ] **CFG-04**: `CODER_WILDCARD_ACCESS_URL` is set from `.env` so workspace apps resolve under a wildcard subdomain
-- [ ] **CFG-05**: Database credentials (`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`) are sourced from `.env` and reflected in `CODER_PG_CONNECTION_URL`
+- [x] **CFG-02**: A local `.env` (gitignored) supplies real configuration and secrets to compose
+- [x] **CFG-03**: `CODER_ACCESS_URL` is set from `.env` to the public-facing URL, disabling Coder's convenience dev tunnel
+- [x] **CFG-04**: `CODER_WILDCARD_ACCESS_URL` is set from `.env` so workspace apps resolve under a wildcard subdomain
+- [x] **CFG-05**: Database credentials (`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`) are sourced from `.env` and reflected in `CODER_PG_CONNECTION_URL`
 
 ### Operations & Documentation
 
@@ -80,16 +80,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRV-01 | Phase 1 | Pending |
-| SRV-02 | Phase 1 | Pending |
-| SRV-03 | Phase 1 | Pending |
-| SRV-04 | Phase 1 | Pending |
+| SRV-01 | Phase 1 | Complete |
+| SRV-02 | Phase 1 | Complete |
+| SRV-03 | Phase 1 | Complete |
+| SRV-04 | Phase 1 | Complete |
 | SRV-05 | Phase 1 | Pending |
 | CFG-01 | Phase 1 | Pending |
-| CFG-02 | Phase 1 | Pending |
-| CFG-03 | Phase 1 | Pending |
-| CFG-04 | Phase 1 | Pending |
-| CFG-05 | Phase 1 | Pending |
+| CFG-02 | Phase 1 | Complete |
+| CFG-03 | Phase 1 | Complete |
+| CFG-04 | Phase 1 | Complete |
+| CFG-05 | Phase 1 | Complete |
 | OPS-01 | Phase 1 | Pending |
 | OPS-02 | Phase 1 | Pending |
 | OPS-03 | Phase 1 | Pending |
@@ -104,6 +104,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TPL-06 | Phase 3 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 22 total (SRV-01..05, CFG-01..05, OPS-01..03, BAK-01..03, TPL-01..06)
 - Mapped to phases: 22
 - Unmapped: 0 ✓
