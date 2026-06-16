@@ -31,9 +31,9 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 - [ ] Docker-based Terraform workspace template provisioning dev containers
 - [ ] Template wires code-server (embedded VSCode) into workspaces
 - [ ] Template supports JetBrains Gateway (IntelliJ) connectivity into workspaces
-- [ ] Coder Tasks (agent-agnostic, defaulting to Claude) available inside workspaces, with `ANTHROPIC_API_KEY` sourced from `.env`
-- [ ] Coder's own MCP server (`coder exp mcp`) exposed so external agents can drive the instance
-- [ ] Pre-configured MCP servers for the agent running inside dev containers
+- [ ] Workspace `/home` persists across stop/start; workspace agent reaches the access URL
+
+> **Scope note (2026-06-16):** during requirements scoping the AI/MCP layer was deferred to v2 (see Out of Scope). v1 delivers the production server, persistence, backups, and the VSCode/IntelliJ workspace template.
 
 ### Out of Scope
 
@@ -43,6 +43,7 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 - Scheduled/automated backups (cron container, timers) — backup scripts are built cron-friendly so external scheduling can be added later, but the scheduler itself is deferred
 - Multi-host / Kubernetes deployment — single Docker host only; workspaces run as containers via the mounted Docker socket
 - Managed Postgres (RDS/Cloud SQL) — self-hosted Postgres container is the target; external DB is a later option
+- AI/MCP integration (Coder Tasks + `ANTHROPIC_API_KEY`, `coder exp mcp` server, in-workspace MCP servers) — **deferred to v2**; v1 focuses on a solid production foundation first
 
 ## Context
 
