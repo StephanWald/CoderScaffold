@@ -20,7 +20,7 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Postgres data persists on a host-disk bind mount (configurable path, default `./data/postgres`) so it survives container recreation
+- [ ] Postgres data persists across container recreation via a named volume by default (`coder_pgdata`, cross-platform); a host-disk bind mount is opt-in via `CODER_PG_DATA_DIR=./data/postgres` (Linux, requires `chown 999:999`)
 - [ ] `pg_dump` backup script writing dumps to host disk, parameterized and cron-friendly (clean exit codes, no interactive prompts)
 - [ ] `pg_restore` restore script that restores a dump into the database
 - [ ] `.env.example` committed; local `.env` (gitignored) holds all configuration
@@ -67,7 +67,7 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Postgres data on host bind mount, not named volume | Data must survive container recreation and be visible on host for backups | — Pending |
+| Postgres data on named volume by default (`coder_pgdata`), host bind mount opt-in via `CODER_PG_DATA_DIR` | Revised in Phase 1 (01-01): bind-mounted PGDATA crash-loops Postgres on macOS/Windows Docker Desktop (VirtioFS denies chown). pg_dump backups run via `docker compose exec -T` and are transparent to the storage backend, so host-visible files aren't needed; named volume is cross-platform and drops the chown prerequisite. Bind mount stays available for operators who want host-visible files (Linux). | ✓ Phase 1 |
 | TLS via external reverse proxy, not bundled | Operator already terminates TLS upstream; keeps scaffold simple and HTTP-only | — Pending |
 | Backup = scripts only, cron-friendly (no scheduler) | Want backup primitives now; scheduling integrated later | — Pending |
 | Include Docker workspace template with VSCode + IntelliJ | Core developer experience goal for the instance | — Pending |
