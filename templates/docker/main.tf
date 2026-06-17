@@ -175,6 +175,26 @@ resource "coder_agent" "main" {
 
     # Symlink ~/.claude.json → shared file.
     ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
+
+    # ── GSD (gsd-core) — install-once into the shared per-owner ~/.claude ────────
+    # GSD installs under ~/.claude (skills, agents, gsd-core/bin), which is the
+    # shared per-owner volume — so a single install persists across every one of
+    # this owner's workspaces. Guards:
+    #   - idempotency: skip if ~/.claude/gsd-core already exists (no re-install,
+    #     no repeated network, safe under D-02). To update, delete that dir and
+    #     restart, or run the npx command manually.
+    #   - non-fatal: a GSD install failure (or missing npm) must NEVER abort the
+    #     startup_script under set -e — log a warning and continue (WR-03 lesson).
+    #   - prerequisite: npx needs Node.js/npm. If npm is absent from the image,
+    #     skip with a clear warning rather than erroring.
+    if [ ! -e "$HOME/.claude/gsd-core" ]; then
+      if command -v npm >/dev/null 2>&1; then
+        npx -y @opengsd/gsd-core@latest --claude --global \
+          || echo "WARN: GSD install failed; continuing without it" >&2
+      else
+        echo "WARN: npm not found; skipping GSD install (install Node.js in the image to enable)" >&2
+      fi
+    fi
   EOT
 
   env = {
