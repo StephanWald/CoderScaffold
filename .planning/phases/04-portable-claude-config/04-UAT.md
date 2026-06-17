@@ -3,44 +3,46 @@ status: partial
 phase: 04-portable-claude-config
 source: [04-VERIFICATION.md]
 started: 2026-06-17T20:05:00Z
-updated: 2026-06-17T21:30:00Z
+updated: 2026-06-17T22:05:00Z
 ---
 
 ## Current Test
 
-[testing paused — deploy blockers fixed inline; functional Tests 1-5 not yet run against a working deploy]
+[testing paused — 4/5 passed; Test 5 (owner isolation) blocked, 1 item outstanding]
 
 ## Tests
 
 ### 1. Live authentication smoke test
 expected: Create workspace A for owner X. Run `claude`, complete OAuth/subscription login. Stop workspace A. Create workspace B for the same owner X. Run `claude` in B — it starts already authenticated, no login prompt.
-result: pending
-note: "Original attempt blocked by template-push failures (now fixed — see Gaps G1). Partial validation done live: after the fixes, a workspace built from the deployed `docker` template shows the correct wiring — `~/.claude` and `~/.claude.json` are symlinks into the mounted `~/.claude-shared` volume, and `claude --version` works. The auth-persistence assertion itself (login in A → B pre-authenticated) was NOT completed."
+result: pass
+note: "Confirmed live: login in workspace A → workspace B for the same owner starts already authenticated, no login prompt. Auth persists across workspaces via the shared volume."
 
 ### 2. Upgrade-path directory guard test (CR-01 fix validation)
 expected: Take a workspace whose persistent home volume already contains a real `~/.claude` directory. Apply the new template, restart. `ls -la ~/.claude` shows a symlink `.claude -> .claude-shared/dot-claude` — NOT a real directory, and no nested `dot-claude` symlink inside a surviving real directory.
-result: pending
+result: pass
 
 ### 3. Content-preservation JSON test (WR-01 fix validation)
 expected: Take a workspace whose home volume contains a real `~/.claude.json` with real auth data. Apply the new template, restart. `cat ~/.claude.json` shows the real auth content preserved in the shared `dot-claude.json`; `~/.claude.json` is a symlink; the `{}` placeholder did NOT replace the real auth data.
-result: pending
+result: pass
 
 ### 4. Idempotency test
 expected: Stop and start the same workspace twice after symlinks are established. The `[ ! -L ]` guards fire as no-ops on subsequent starts — no repeated migration, no errors, `~/.claude` and `~/.claude.json` remain symlinks.
-result: pending
+result: pass
 
 ### 5. Owner isolation test
 expected: Create workspaces for two different owners X and Y. `docker volume ls --format '{{.Name}}' | grep -- '-claude$'` shows two distinct volumes with different UUID segments. Authenticate as X; Y's workspace has no access to X's credentials and starts unauthenticated.
-result: pending
+result: blocked
+blocked_by: other
+reason: "User reported blocked; no second owner account available to exercise the X vs Y isolation path."
 
 ## Summary
 
 total: 5
-passed: 0
+passed: 4
 issues: 0
-pending: 5
+pending: 0
 skipped: 0
-blocked: 0
+blocked: 1
 
 ## Session Notes
 
@@ -63,6 +65,12 @@ paused by the user.
 - `claude --version` works; GSD install completes.
 
 **Not done:** Tests 1-5 functional assertions — auth persistence A→B, upgrade-path migration with real pre-existing config (Tests 2 & 3, the data-loss paths), idempotency across restarts, owner isolation.
+
+**Resumed session (2026-06-17T22:05Z):** Functional Tests 1-4 run live and PASSED —
+auth persistence A→B (Test 1), upgrade-path directory guard / CR-01 (Test 2),
+content-preservation JSON / WR-01 (Test 3, no data loss), and idempotency across
+restarts (Test 4). Test 5 (owner isolation X vs Y) BLOCKED — no second owner account
+available to exercise the two-owner path. No code issues found.
 
 ## Gaps
 
