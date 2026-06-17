@@ -32,7 +32,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Backup & Restore
 
 - [x] **BAK-01**: `scripts/backup.sh` produces a non-interactive custom-format dump (`pg_dump -Fc` via `docker compose exec -T`) written to a host path (default `./backups/`)
-- [ ] **BAK-02**: `scripts/restore.sh` restores a chosen dump into the database safely (handles clean/recreate and role ownership), non-interactively
+- [x] **BAK-02**: `scripts/restore.sh` restores a chosen dump into the database safely (handles clean/recreate and role ownership), non-interactively
 - [x] **BAK-03**: Both scripts read configuration from `.env`, avoid interactive password prompts, and return meaningful exit codes so an external scheduler/backup tool can invoke them
 
 ### Workspace Template
@@ -94,7 +94,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OPS-02 | Phase 1 | Pending |
 | OPS-03 | Phase 1 | Pending |
 | BAK-01 | Phase 2 | Complete |
-| BAK-02 | Phase 2 | Pending |
+| BAK-02 | Phase 2 | Complete |
 | BAK-03 | Phase 2 | Complete |
 | TPL-01 | Phase 3 | Pending |
 | TPL-02 | Phase 3 | Pending |
@@ -113,4 +113,4 @@ Note: Original file stated "23 total" — recount of explicit IDs yields 22. No 
 
 ---
 *Requirements defined: 2026-06-16*
-*Last updated: 2026-06-16 after roadmap creation (traceability populated)*
+*Last updated: 2026-06-17 after Phase 02 Plan 02 completion (BAK-02 marked complete)*

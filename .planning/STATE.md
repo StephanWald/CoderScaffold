@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Plan 02-01 complete: scripts/backup.sh created. Ready for Plan 02-02: restore.sh"
-last_updated: "2026-06-17T07:06:17.644Z"
-last_activity: 2026-06-17 -- Phase 02 execution started
+stopped_at: "Plan 02-02 complete: scripts/restore.sh + README Backup & restore section. Phase 02 done — ready for Phase 03"
+last_updated: "2026-06-17T07:10:00.000Z"
+last_activity: 2026-06-17 -- Phase 02 execution complete
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
-  percent: 33
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-06-16)
 
 ## Current Position
 
-Phase: 02 (backup-restore-scripts) — EXECUTING
+Phase: 02 (backup-restore-scripts) — COMPLETE
 Plan: 2 of 2
-Status: Ready to execute
-Last activity: 2026-06-17 -- Phase 02 execution started
+Status: Complete — ready for Phase 03
+Last activity: 2026-06-17 -- Phase 02 execution complete
 
-Progress: [##░░░░░░░░] 25%
+Progress: [######░░░░] 67%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [##░░░░░░░░] 25%
 | Phase 01-compose-hardening-configuration P01 | 90min | 2 tasks + 1 checkpoint | 2 files |
 | Phase 01-compose-hardening-configuration P02 | 45min | 2 tasks + 1 checkpoint | 2 files |
 | Phase 02-backup-restore-scripts P01 | 4min | 2 tasks | 1 files |
+| Phase 02-backup-restore-scripts P02 | 2min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [Phase 02-backup-restore-scripts]: chmod 600 applied to dump file immediately after write (ASVS V4 — dump contains user/workspace data including tokens)
 - [Phase 02-backup-restore-scripts]: PGPASSWORD as inline env prefix on docker compose exec — limits variable lifetime to single exec call, not exported
 - [Phase 02-backup-restore-scripts]: Two-step dump verification: zero-byte size guard + pg_restore --list structural check (catches TTY corruption where pg_dump exits 0 but produces corrupt/empty output)
+- [Phase 02-backup-restore-scripts P02]: EXIT trap registered immediately after docker compose stop coder — coder restarted even if pg_restore fails under set -e (Pitfall 6)
+- [Phase 02-backup-restore-scripts P02]: Argument validation (-f regular file + -s non-zero size) placed before sourcing .env and before any service stop — no destructive action on invalid input (ASVS V5, T-02-05)
+- [Phase 02-backup-restore-scripts P02]: Restore reads dump via stdin redirect (< ${DUMP_FILE}), not as pg_restore filename arg — avoids docker/compose exec binary corruption pattern (#8909)
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-17T07:06:17.632Z
-Stopped at: Plan 02-01 complete: scripts/backup.sh created. Ready for Plan 02-02: restore.sh
-Resume file: .planning/phases/ (Phase 02 plans TBD — run /gsd:plan-phase 02 to generate plans)
+Last session: 2026-06-17T07:10:00.000Z
+Stopped at: Plan 02-02 complete: scripts/restore.sh + README Backup & restore section. Phase 02 done — ready for Phase 03
+Resume file: None — Phase 02 complete. Run /gsd:plan-phase 03 to plan Phase 03
