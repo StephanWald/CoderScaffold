@@ -378,3 +378,20 @@ module "jetbrains-gateway" {
   default        = "IU"
   order          = 2
 }
+
+# Claude Code CLI — installs latest CLI and wires ANTHROPIC_API_KEY (CLAUDE-01 / D-05, D-06)
+# Note: the CLI version is intentionally unpinned (no version pin argument) — a deliberate
+# exception to the repo's pin-everything ethos. The Claude CLI moves fast; latest-on-start
+# ensures the current stable release is always used. Revisit if CLI churn causes workspace
+# breakage (D-06). The claude-code module (v5.2.0) does not take agent_name or folder.
+module "claude-code" {
+  count               = data.coder_workspace.me.start_count
+  source              = "registry.coder.com/coder/claude-code/coder"
+  version             = "5.2.0"
+  agent_id            = coder_agent.main.id
+  anthropic_api_key   = var.anthropic_api_key
+  install_claude_code = true
+  order               = 3
+}
+
+# ── [END REUSABLE] ────────────────────────────────────────────────────────────
