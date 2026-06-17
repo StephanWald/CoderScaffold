@@ -20,12 +20,16 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    # If the coder user does not have write permissions on
-    # the docker socket, you can uncomment the following
-    # lines and set the group ID to one that has write
-    # permissions on the docker socket.
-    #group_add:
-    #  - "998" # docker group on host
+    # The coder user needs write access to the mounted Docker socket (below) to
+    # provision workspaces. Set group_add to the socket's group ID:
+    #   - Docker Desktop (macOS/Windows): the socket is root-owned inside the
+    #     container, so use GID 0 (the default set below).
+    #   - Linux: use the host's docker group GID instead. Find it with
+    #     `stat -c '%g' /var/run/docker.sock` (commonly 999 or 998) and replace
+    #     the value below. (macOS host stat uses `stat -f '%g'`, but on Docker
+    #     Desktop the in-container GID is 0 regardless — see README.)
+    group_add:
+      - "0" # Docker Desktop (macOS/Windows). Linux: set to host docker group GID.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Run "docker volume rm coder_coder_home" to reset the dev tunnel url (https://abc.xyz.try.coder.app).

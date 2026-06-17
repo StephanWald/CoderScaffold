@@ -333,35 +333,41 @@ Once the workspace agent connects (status shows **Connected**), two app buttons 
 
 ### Docker Socket Permissions
 
-If workspace provisioning fails with a permission error on `/var/run/docker.sock`, the Docker
-socket GID on your host differs from the container default. Fix it in two steps:
+If workspace provisioning fails with a permission error on `/var/run/docker.sock`, the `coder`
+user inside the server container can't access the mounted Docker socket. The required `group_add`
+GID depends on where Docker runs.
 
-1. Discover the GID of the host docker group:
+The reliable way to find the value — on every platform — is to read the socket's group GID **as
+seen inside the running `coder` container** (this is the number `group_add` must match):
 
-   ```bash
-   stat -c '%g' /var/run/docker.sock
-   ```
+```bash
+docker compose exec coder stat -c '%g' /var/run/docker.sock
+```
 
-2. In `compose.yaml`, uncomment the `group_add` block and set the GID to the value from step 1:
+Then, in `compose.yaml`, set the `group_add` value to that number and restart:
 
-   ```yaml
-   group_add:
-     - "998"  # Replace 998 with the output of: stat -c '%g' /var/run/docker.sock
-   ```
+```yaml
+group_add:
+  - "0"  # replace with the GID printed by the command above
+```
+```bash
+docker compose up -d coder
+```
 
-3. Restart the Coder server to apply the change:
+**Docker Desktop (macOS / Windows):** The socket is proxied through the Docker Desktop VM and
+appears **root-owned (GID `0`) inside the container**, regardless of what the macOS/Windows host
+reports — so the value is `0`. `compose.yaml` ships with `group_add: ["0"]` as the default for
+this reason. Note: the macOS host `stat` command is `stat -f '%g'` (BSD), not `stat -c '%g'`
+(GNU) — but the host value does not apply here; use the in-container command above.
 
-   ```bash
-   docker compose up -d coder
-   ```
+**Linux:** The socket is owned by the host's `docker` group. Use that GID (commonly `999`, or
+`998` on Ubuntu, `101` on Alpine). Discover it on the host with `stat -c '%g' /var/run/docker.sock`,
+or use the in-container command above — both report the same number on Linux.
 
-> **GID varies by host distro:** Ubuntu is typically `998`, Debian `999`, Alpine `101`. The
-> correct value cannot be hardcoded — always discover it with `stat -c '%g' /var/run/docker.sock`
-> on the specific host.
-
-**Failure symptom:** Workspace provisioning fails immediately after "Pending" with a Docker API
-permission error. Run `docker compose logs coder` and look for `permission denied` on Docker
-socket operations.
+**Failure symptom:** Provisioning fails immediately (the agent/app resources may create, but the
+first `docker_*` resource errors) with `permission denied while trying to connect to the Docker
+daemon socket at unix:///var/run/docker.sock`. Run `docker compose logs coder` and look for
+`permission denied` on Docker socket operations.
 
 ### Workspace Agent Connectivity
 
