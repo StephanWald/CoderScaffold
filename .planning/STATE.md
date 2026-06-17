@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
+status: Awaiting next milestone
 stopped_at: "Completed Phase 03 Plan 02 (README ## Workspace Template section)"
-last_updated: "2026-06-17T14:44:26.455Z"
-last_activity: 2026-06-17
+last_updated: "2026-06-17T15:32:27.595Z"
+last_activity: 2026-06-17 — Milestone v1.0 completed and archived
 progress:
   total_phases: 3
   completed_phases: 3
@@ -25,12 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-16)
 
 ## Current Position
 
-Phase: 03
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-06-17
-
-Progress: [#######░░░] 71%
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-17 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -101,9 +99,15 @@ None yet.
 |----------|------|--------|-------------|
 | AI/MCP | Coder Tasks + claude-code + MCP servers (AI-01..04) | v2 | 2026-06-16 |
 | QoL | Dotfiles module, backup retention, workspace resource limits (QOL-01..03) | v2 | 2026-06-16 |
+| verification | Phase 01 — 01-VERIFICATION.md status human_needed (functional; formal UAT not recorded) | acknowledged at v1.0 close | 2026-06-17 |
+| verification | Phase 02 — 02-VERIFICATION.md status human_needed (functional; formal UAT not recorded) | acknowledged at v1.0 close | 2026-06-17 |
 
 ## Session Continuity
 
 Last session: 2026-06-17T14:19:33.099Z
 Stopped at: Completed Phase 03 Plan 02 (README ## Workspace Template section)
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

@@ -2,7 +2,9 @@
 
 ## What This Is
 
-A Docker Compose–based, production-ready scaffold for self-hosting [Coder](https://coder.com) (the self-hosted cloud development environment platform). It refines the upstream Docker install (https://coder.com/docs/install/docker) into a deployable environment with durable Postgres persistence on host disk, database backup/restore tooling, environment-driven configuration, and a starter workspace template that gives developers VSCode (code-server) and IntelliJ (JetBrains Gateway) dev containers with AI agent + MCP integration.
+A Docker Compose–based, production-ready scaffold for self-hosting [Coder](https://coder.com) (the self-hosted cloud development environment platform). It refines the upstream Docker install (https://coder.com/docs/install/docker) into a deployable environment with durable Postgres persistence, database backup/restore tooling, environment-driven configuration, and a starter workspace template that gives developers VSCode (code-server) and IntelliJ (JetBrains Gateway) dev containers. (AI agent + MCP integration is planned for v2.)
+
+**Shipped: v1.0 MVP (2026-06-17)** — all 22 v1 requirements delivered across 3 phases. See `.planning/MILESTONES.md`.
 
 ## Core Value
 
@@ -22,17 +24,20 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 - ✓ Document the external-reverse-proxy contract: scaffold serves HTTP on `7080`; an upstream proxy terminates TLS and routes the wildcard apps subdomain — Phase 1
 - ✓ `pg_dump` backup script writing dumps to host disk, parameterized and cron-friendly (clean exit codes, no interactive prompts) — Phase 2
 - ✓ `pg_restore` restore script that restores a dump into the database — Phase 2
+- ✓ Docker-based Terraform workspace template (`templates/docker/`) provisioning dev containers via the Docker socket — Phase 3
+- ✓ Template wires code-server (embedded VSCode) into workspaces (`coder/code-server` 1.5.0) — Phase 3
+- ✓ Template supports JetBrains Gateway (IntelliJ) connectivity (`coder/jetbrains-gateway` 1.2.6) — Phase 3
+- ✓ Workspace `/home` persists across stop/start (per-workspace Docker volume); agent reaches the access URL via `host.docker.internal`/`host-gateway` — Phase 3
 
 ### Active
 
-<!-- Current scope. Building toward these. -->
+<!-- Current scope. Building toward these. Next milestone (v2) — not yet planned. -->
 
-- [ ] Docker-based Terraform workspace template provisioning dev containers
-- [ ] Template wires code-server (embedded VSCode) into workspaces
-- [ ] Template supports JetBrains Gateway (IntelliJ) connectivity into workspaces
-- [ ] Workspace `/home` persists across stop/start; workspace agent reaches the access URL
+- (None — v1.0 shipped. Next milestone v2 candidates below; run `/gsd-new-milestone` to scope them.)
+- [ ] (v2) AI/MCP integration — Coder Tasks, `claude-code` module with `ANTHROPIC_API_KEY`, Coder's MCP server, in-workspace MCP servers (AI-01..04)
+- [ ] (v2) Quality of life — dotfiles module, backup retention/pruning, workspace CPU/memory limits (QOL-01..03)
 
-> **Scope note (2026-06-16):** during requirements scoping the AI/MCP layer was deferred to v2 (see Out of Scope). v1 delivers the production server, persistence, backups, and the VSCode/IntelliJ workspace template.
+> **Scope note (2026-06-16):** during requirements scoping the AI/MCP layer was deferred to v2 (see Out of Scope). v1 delivered the production server, persistence, backups, and the VSCode/IntelliJ workspace template.
 
 ### Out of Scope
 
@@ -67,12 +72,26 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Postgres data on named volume by default (`coder_pgdata`), host bind mount opt-in via `CODER_PG_DATA_DIR` | Revised in Phase 1 (01-01): bind-mounted PGDATA crash-loops Postgres on macOS/Windows Docker Desktop (VirtioFS denies chown). pg_dump backups run via `docker compose exec -T` and are transparent to the storage backend, so host-visible files aren't needed; named volume is cross-platform and drops the chown prerequisite. Bind mount stays available for operators who want host-visible files (Linux). | ✓ Phase 1 |
-| TLS via external reverse proxy, not bundled | Operator already terminates TLS upstream; keeps scaffold simple and HTTP-only | — Pending |
+| TLS via external reverse proxy, not bundled | Operator already terminates TLS upstream; keeps scaffold simple and HTTP-only | ✓ Phase 1 — reverse-proxy contract documented in README (OPS-01); proxy itself out of scope |
 | Backup = scripts only, cron-friendly (no scheduler) | Want backup primitives now; scheduling integrated later | ✓ Phase 2 — `scripts/backup.sh` + `scripts/restore.sh`, non-interactive with clean exit codes; round-trip UAT verified |
-| Include Docker workspace template with VSCode + IntelliJ | Core developer experience goal for the instance | — Pending |
-| Coder Tasks (agent-agnostic), default Claude/Anthropic | Avoid locking to one agent while matching current toolchain | — Pending |
-| MCP both ways: Coder's MCP server + in-container MCP | Drive Coder from external agents and equip in-workspace agents | — Pending |
-| Pin Coder image version, keep reference overridable | Production reproducibility without breaking upstream automations | — Pending |
+| Include Docker workspace template with VSCode + IntelliJ | Core developer experience goal for the instance | ✓ Phase 3 — `templates/docker/main.tf` with code-server 1.5.0 + jetbrains-gateway 1.2.6; UAT-confirmed on Docker Desktop |
+| Coder Tasks (agent-agnostic), default Claude/Anthropic | Avoid locking to one agent while matching current toolchain | — Deferred to v2 |
+| MCP both ways: Coder's MCP server + in-container MCP | Drive Coder from external agents and equip in-workspace agents | — Deferred to v2 |
+| Pin Coder image version, keep reference overridable | Production reproducibility without breaking upstream automations | ✓ Phase 1 — default `v2.33.8`, overridable via `CODER_REPO`/`CODER_VERSION` |
+| Workspace home volume keyed on workspace UUID with `ignore_changes = [name]` | Rename-safe persistence without freezing all attributes (code-review WR-02) | ✓ Phase 3 |
+| Narrow agent init-script `host.docker.internal` rewrite to the access-URL host only | Avoid global loopback rewrite in the init script (code-review WR-01) | ✓ Phase 3 |
+
+## Current State
+
+**Shipped:** v1.0 MVP — 2026-06-17 (3 phases, 7 plans, 22/22 v1 requirements).
+
+The scaffold delivers: a hardened `compose.yaml` (pinned Coder `v2.33.8` + `postgres:17`, restart policies, healthcheck, env-driven config, named-volume Postgres with opt-in host bind mount); non-interactive `pg_dump`/`pg_restore` backup tooling (`scripts/backup.sh`, `scripts/restore.sh`); a committed `.env.example` + operator README runbook (reverse-proxy contract, first-admin bootstrap, bring-up sequence); and a Docker workspace Terraform template (`templates/docker/main.tf`) wiring code-server (VS Code) + JetBrains Gateway (IntelliJ) with persistent `/home` and host-gateway connectivity.
+
+**Codebase:** 8 source files — `compose.yaml`, `.env.example`, `README.md`, `CLAUDE.md`, `scripts/backup.sh`, `scripts/restore.sh`, `templates/docker/main.tf`, `.gitignore`. Stack: Docker Compose, Postgres 17, Coder `v2.33.8`, Terraform (kreuzwerker/docker ~> 4.4, coder/coder ~> 2.18).
+
+**Known deferred at close (acknowledged, not blocking):** Phases 1 & 2 verification status is `human_needed` — functionally complete and in use, but formal UAT was not recorded (see STATE.md → Deferred Items). Phase 3 UAT passed (SC-1..SC-5).
+
+**Next milestone (v2 — not yet planned):** AI/MCP integration (AI-01..04) and quality-of-life items (QOL-01..03). Run `/gsd-new-milestone` to scope.
 
 ## Evolution
 
@@ -92,4 +111,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-17 after Phase 2*
+*Last updated: 2026-06-17 after v1.0 milestone*
