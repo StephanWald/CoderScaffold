@@ -2,9 +2,21 @@
 
 ## What This Is
 
-A Docker Compose–based, production-ready scaffold for self-hosting [Coder](https://coder.com) (the self-hosted cloud development environment platform). It refines the upstream Docker install (https://coder.com/docs/install/docker) into a deployable environment with durable Postgres persistence, database backup/restore tooling, environment-driven configuration, and a starter workspace template that gives developers VSCode (code-server) and IntelliJ (JetBrains Gateway) dev containers. (AI agent + MCP integration is planned for v2.)
+A Docker Compose–based, production-ready scaffold for self-hosting [Coder](https://coder.com) (the self-hosted cloud development environment platform). It refines the upstream Docker install (https://coder.com/docs/install/docker) into a deployable environment with durable Postgres persistence, database backup/restore tooling, environment-driven configuration, and a starter workspace template that gives developers VSCode (code-server) and IntelliJ (JetBrains Gateway) dev containers. (Broader AI/MCP integration — Coder Tasks, Coder's MCP server — remains planned for a later milestone.)
 
 **Shipped: v1.0 MVP (2026-06-17)** — all 22 v1 requirements delivered across 3 phases. See `.planning/MILESTONES.md`.
+
+## Current Milestone: v1.1 Portable Claude Code Setup
+
+**Goal:** Maintain Claude Code once — auth, settings, skills, MCP servers — and reuse it across every workspace, regardless of which template built it.
+
+**Target features:**
+- `coder/claude-code` module wired into the Docker workspace template (install + enable Claude Code)
+- Per-owner shared Docker volume covering the full config surface — both `~/.claude/` and `~/.claude.json` — so auth, settings, skills, and user-scoped MCP servers all carry across workspaces
+- Nested mount layering: per-workspace home volume + per-owner Claude config volume
+- First-run login flow (empty volume → authenticate once → persists and shares)
+- Reusable pattern documented so any future template inherits the same one Claude setup
+- README operator section: seeding, auth, and the concurrent-workspace write caveat
 
 ## Core Value
 
@@ -31,13 +43,21 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 
 ### Active
 
-<!-- Current scope. Building toward these. Next milestone (v2) — not yet planned. -->
+<!-- Current scope. Building toward these. Milestone v1.1 — Portable Claude Code Setup. -->
 
-- (None — v1.0 shipped. Next milestone v2 candidates below; run `/gsd-new-milestone` to scope them.)
-- [ ] (v2) AI/MCP integration — Coder Tasks, `claude-code` module with `ANTHROPIC_API_KEY`, Coder's MCP server, in-workspace MCP servers (AI-01..04)
-- [ ] (v2) Quality of life — dotfiles module, backup retention/pruning, workspace CPU/memory limits (QOL-01..03)
+- [ ] (v1.1) Install + enable Claude Code in the Docker workspace template via the `coder/claude-code` module
+- [ ] (v1.1) Per-owner shared volume covering `~/.claude/` and `~/.claude.json` (auth, settings, skills, user-scoped MCP servers)
+- [ ] (v1.1) Mount the shared Claude config into workspaces, layered over the per-workspace home volume
+- [ ] (v1.1) First-run login flow — empty volume, authenticate once, persists and shares across workspaces
+- [ ] (v1.1) Document the reusable pattern + operator runbook (seeding, auth, concurrent-write caveat)
 
-> **Scope note (2026-06-16):** during requirements scoping the AI/MCP layer was deferred to v2 (see Out of Scope). v1 delivered the production server, persistence, backups, and the VSCode/IntelliJ workspace template.
+> See REQUIREMENTS.md for the scoped, REQ-ID'd v1.1 requirements.
+
+**Deferred to a later milestone:**
+- Full AI/MCP suite — Coder Tasks, Coder's MCP server (`coder exp mcp`), in-workspace MCP servers (AI-01..04 superset)
+- Quality of life — dotfiles module, backup retention/pruning, workspace CPU/memory limits (QOL-01..03)
+
+> **Scope note (2026-06-16):** during v1.0 requirements scoping the AI/MCP layer was deferred (see Out of Scope). v1.0 delivered the production server, persistence, backups, and the VSCode/IntelliJ workspace template. **v1.1 (2026-06-17)** delivers a focused AI slice: portable, share-once Claude Code config across workspaces. The broader AI/MCP suite (Tasks, MCP server) remains deferred.
 
 ### Out of Scope
 
@@ -111,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-17 after v1.0 milestone*
+*Last updated: 2026-06-17 — milestone v1.1 (Portable Claude Code Setup) started*
