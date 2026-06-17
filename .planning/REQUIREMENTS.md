@@ -37,12 +37,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Workspace Template
 
-- [ ] **TPL-01**: A Docker-based Terraform template (`templates/docker/`) provisions workspaces as containers on the host via the Docker socket
-- [ ] **TPL-02**: Template exposes code-server (browser VSCode) as a workspace app via the `coder/code-server` module
-- [ ] **TPL-03**: Template supports JetBrains Gateway (IntelliJ) connectivity via the `coder/jetbrains-gateway` module
-- [ ] **TPL-04**: Workspace `/home` is a persistent volume that survives stop/start
-- [ ] **TPL-05**: Template handles Docker socket access (documented `group_add` / GID) so workspace provisioning works
-- [ ] **TPL-06**: Workspace agent reaches the Coder server access URL reliably (e.g. `host.docker.internal` handling) so workspaces connect
+- [x] **TPL-01**: A Docker-based Terraform template (`templates/docker/`) provisions workspaces as containers on the host via the Docker socket
+- [x] **TPL-02**: Template exposes code-server (browser VSCode) as a workspace app via the `coder/code-server` module
+- [x] **TPL-03**: Template supports JetBrains Gateway (IntelliJ) connectivity via the `coder/jetbrains-gateway` module
+- [x] **TPL-04**: Workspace `/home` is a persistent volume that survives stop/start
+- [x] **TPL-05**: Template handles Docker socket access (documented `group_add` / GID) so workspace provisioning works
+- [x] **TPL-06**: Workspace agent reaches the Coder server access URL reliably (e.g. `host.docker.internal` handling) so workspaces connect
 
 ## v2 Requirements
 
