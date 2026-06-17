@@ -84,8 +84,18 @@ Plans:
   4. Stopping and starting a workspace preserves the contents of `/home` — files created before the stop are present after the restart
   5. Workspace provisioning succeeds on a host where the Docker socket GID differs from the default; the template documents the `group_add` / GID handling so operators know how to resolve socket permission issues
 
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
+
+Plans:
+
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — `templates/docker/main.tf`: complete Coder Docker template (providers, agent, persistent /home volume, host-gateway connectivity, commented socket-GID block, code-server + jetbrains-gateway/IntelliJ modules) [Wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — README `## Workspace Template` section: push + metadata workflow, Docker socket GID resolution, local/production agent connectivity, home persistence [Wave 2]
 
 ## Progress
 
@@ -96,4 +106,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Compose Hardening & Configuration | 2/2 | Complete | 2026-06-17 |
 | 2. Backup & Restore Scripts | 3/3 | Complete    | 2026-06-17 |
-| 3. Docker Workspace Template | 0/TBD | Not started | - |
+| 3. Docker Workspace Template | 0/2 | Not started | - |
