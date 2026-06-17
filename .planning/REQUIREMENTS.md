@@ -1,0 +1,76 @@
+# Requirements: Coder Production Scaffold — v1.1 Portable Claude Code Setup
+
+**Defined:** 2026-06-17
+**Core Value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
+
+> **Milestone v1.1 focus:** Maintain Claude Code once — auth, settings, skills, MCP servers — and reuse it across every workspace, regardless of which template built it.
+
+## v1.1 Requirements
+
+Requirements for the Portable Claude Code Setup milestone. Each maps to roadmap phases. (v1.0 requirements shipped — see `.planning/milestones/v1.0-REQUIREMENTS.md`.)
+
+### Claude Code Integration
+
+- [ ] **CLAUDE-01**: Claude Code is installed and enabled in the Docker workspace template via the `coder/claude-code` module (v5.2.0)
+- [ ] **CLAUDE-02**: A per-owner Docker volume (keyed on the owner UUID, rename-safe via `ignore_changes=[name]`, destroy-protected) is provisioned and shared across all of a user's workspaces
+- [ ] **CLAUDE-03**: The full Claude config surface — `~/.claude/` and `~/.claude.json` (auth, settings, skills, user-scoped MCP servers) — lives on the shared volume
+- [ ] **CLAUDE-04**: The shared volume is writable by the `coder` user on first start (ownership resolved in `startup_script` before Claude Code runs)
+- [ ] **CLAUDE-05**: First-run login works on an empty volume — authenticate once, and subsequent workspaces start already authenticated (no API key required by default)
+
+### Reusability & Operator Docs
+
+- [ ] **CLAUDE-06**: The shared-Claude-config pattern is documented as a reusable, drop-in snippet any future template can adopt
+- [ ] **CLAUDE-07**: README operator section covers first-run login, what is shared, seeding behavior, and the concurrent-workspace write caveat
+
+## Future Requirements
+
+Deferred to a later milestone. Tracked but not in the v1.1 roadmap.
+
+### AI/MCP (full suite)
+
+- **AI-01**: Coder Tasks (`coder_ai_task`) wired into the workspace template
+- **AI-02**: Coder's MCP server (`coder exp mcp`) exposed for external agents
+- **AI-03**: In-workspace MCP servers provisioned by the template
+- **AI-04**: `ANTHROPIC_API_KEY` injection path from gitignored `.env` (API-key auth as an alternative to subscription login)
+
+### Quality of Life
+
+- **QOL-01**: Dotfiles module wired into the workspace template
+- **QOL-02**: Backup retention / pruning for the `pg_dump` backups
+- **QOL-03**: Workspace CPU / memory limits
+
+## Out of Scope
+
+Explicitly excluded for v1.1. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| API-key (`ANTHROPIC_API_KEY`) auth as the default | v1.1 ships subscription/OAuth first-run login; setting `ANTHROPIC_API_KEY` would take precedence in Claude Code's auth order and break the intended interactive login flow. API-key path deferred to AI-04. |
+| Coder Tasks / `coder_ai_task` wiring | Belongs to the full AI/MCP suite (AI-01); claude-code v5.2.0 dropped Tasks integration and v1.1 only needs install + auth. |
+| Coder's MCP server (`coder exp mcp`) and in-workspace MCP server provisioning | Deferred to AI-02/AI-03; v1.1 shares the user's *existing* MCP config, it does not provision new MCP servers. |
+| Concurrent multi-workspace write coordination (file locking / `flock`) | Upstream race in `~/.claude.json` and credential refresh is unfixed; v1.1 documents the "one active workspace per owner" caveat rather than engineering a lock. Possible later enhancement. |
+| Operator pre-seeding the volume from a host `~/.claude` | Chosen seeding model is empty volume + first-run login; host-copy seeding is unneeded for v1.1. |
+| Fixing the `.devcontainer/devcontainer.json` `~/.claude.json` gap | The repo's own devcontainer mounts only `/home/node/.claude` and misses `~/.claude.json`; noted in the README but correcting the devcontainer is out of this milestone's scope. |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| CLAUDE-01 | TBD | Pending |
+| CLAUDE-02 | TBD | Pending |
+| CLAUDE-03 | TBD | Pending |
+| CLAUDE-04 | TBD | Pending |
+| CLAUDE-05 | TBD | Pending |
+| CLAUDE-06 | TBD | Pending |
+| CLAUDE-07 | TBD | Pending |
+
+**Coverage:**
+- v1.1 requirements: 7 total
+- Mapped to phases: 0 (roadmap pending)
+- Unmapped: 7 ⚠️ (resolved when roadmap is created)
+
+---
+*Requirements defined: 2026-06-17*
+*Last updated: 2026-06-17 after initial v1.1 definition*
