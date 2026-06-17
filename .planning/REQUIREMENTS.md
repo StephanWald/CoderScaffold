@@ -97,9 +97,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BAK-02 | Phase 2 | Complete |
 | BAK-03 | Phase 2 | Complete |
 | TPL-01 | Phase 3 | Complete |
-| TPL-02 | Phase 3 | Pending |
-| TPL-03 | Phase 3 | Pending |
-| TPL-04 | Phase 3 | Pending |
+| TPL-02 | Phase 3 | Complete |
+| TPL-03 | Phase 3 | Complete |
+| TPL-04 | Phase 3 | Complete |
 | TPL-05 | Phase 3 | Complete |
 | TPL-06 | Phase 3 | Complete |
 
