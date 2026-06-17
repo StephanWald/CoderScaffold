@@ -12,6 +12,8 @@
 #   docker_container — ephemeral workspace container (count = start_count)
 #   module code-server        — browser VS Code (TPL-02)
 #   module jetbrains-gateway  — IntelliJ Gateway (TPL-03)
+#   docker_volume claude_config_volume — per-owner Claude config (survives workspace delete)
+#   module claude-code                 — Claude Code CLI + auth wiring (CLAUDE-01)
 
 terraform {
   required_providers {
@@ -42,6 +44,46 @@ variable "workspace_image" {
   default     = "codercom/enterprise-base:ubuntu"
   description = "Workspace container image. Override to use a custom image."
   type        = string
+}
+
+# ── [REUSABLE] Per-owner Claude Code config volume ──────────────────────────
+#
+# WHAT: A Docker named volume keyed on the owner's immutable UUID. Shared
+#   across ALL workspaces for this owner. Carries ~/.claude/ (directory)
+#   and ~/.claude.json (file) via a neutral mount point + symlinks.
+#
+# HOW TO USE:
+#   1. Add this anthropic_api_key variable (below).
+#   2. Add the docker_volume.claude_config_volume resource (below).
+#   3. Add the second volumes{} block to docker_container.workspace (see
+#      the comment inside the container resource block below).
+#   4. Add the "Claude Code config" block to coder_agent.main.startup_script
+#      (see the comment inside the agent resource block below).
+#   5. Add the claude-code module (below).
+#
+# OPERATOR NOTES:
+#   - First run: volume starts empty. `claude auth login` authenticates once;
+#     auth persists to the shared volume for all future workspaces.
+#   - Concurrent writes: avoid running claude in two workspaces simultaneously
+#     for the same owner. ~/.claude.json is not write-safe under concurrent
+#     access (no file locking). Sequential use is safe.
+#   - Volume cleanup: `prevent_destroy = true` means Terraform never removes
+#     this volume. To fully remove it: `docker volume rm <name>` manually.
+#   - Volume name: coder-<owner-uuid>-claude. List with:
+#       docker volume ls -f label=coder.purpose=claude-config
+#
+# MOUNT LAYOUT INSIDE CONTAINER:
+#   /home/coder/.claude-shared/            ← named volume mount point
+#   /home/coder/.claude-shared/dot-claude/      (actual ~/.claude contents)
+#   /home/coder/.claude-shared/dot-claude.json  (actual ~/.claude.json contents)
+#   /home/coder/.claude      →  .claude-shared/dot-claude       (symlink)
+#   /home/coder/.claude.json →  .claude-shared/dot-claude.json  (symlink)
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key for Claude Code (from console.anthropic.com). Leave empty to use interactive OAuth/subscription login."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 # ── Providers ─────────────────────────────────────────────────────────────────
@@ -141,6 +183,39 @@ resource "docker_volume" "home_volume" {
   labels {
     label = "coder.workspace_name_at_creation"
     value = data.coder_workspace.me.name
+  }
+}
+
+# ── Claude config volume (per-owner, CLAUDE-02) ───────────────────────────────
+#
+# docker_volume has NO count — the volume must survive workspace stop/start
+# AND workspace deletion (prevent_destroy = true).
+# Name uses owner UUID (immutable) — NOT owner name, which can change and
+# would orphan the volume. (D-03)
+
+resource "docker_volume" "claude_config_volume" {
+  name = "coder-${data.coder_workspace_owner.me.id}-claude"
+
+  # The volume name is keyed on the immutable owner UUID, so a username rename
+  # never changes it. prevent_destroy ensures workspace deletion does NOT
+  # destroy shared auth/config. ignore_changes guards against a future
+  # name-format change forcing a destroy/recreate. (D-03)
+  lifecycle {
+    ignore_changes  = [name]
+    prevent_destroy = true
+  }
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.purpose"
+    value = "claude-config"
   }
 }
 
