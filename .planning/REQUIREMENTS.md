@@ -20,7 +20,7 @@ Requirements for the Portable Claude Code Setup milestone. Each maps to roadmap 
 ### Reusability & Operator Docs
 
 - [x] **CLAUDE-06**: The shared-Claude-config pattern is documented as a reusable, drop-in snippet any future template can adopt
-- [ ] **CLAUDE-07**: README operator section covers first-run login, what is shared, seeding behavior, and the concurrent-workspace write caveat
+- [x] **CLAUDE-07**: README operator section covers first-run login, what is shared, seeding behavior, and the concurrent-workspace write caveat
 
 ## Future Requirements
 
@@ -64,7 +64,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLAUDE-04 | Phase 4 | Complete |
 | CLAUDE-05 | Phase 4 | Complete |
 | CLAUDE-06 | Phase 4 | Complete |
-| CLAUDE-07 | Phase 4 | Pending |
+| CLAUDE-07 | Phase 4 | Complete |
 
 **Coverage:**
 
