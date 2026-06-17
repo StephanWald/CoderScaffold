@@ -1,476 +1,484 @@
 # Architecture Research
 
-**Domain:** Self-hosted Coder production scaffold (Docker Compose, single host)
-**Researched:** 2026-06-16
-**Confidence:** HIGH (authoritative Coder docs, upstream compose.yaml, verified CLI reference)
-
----
+**Domain:** Portable Claude Code config across Coder Docker workspaces (v1.1 milestone)
+**Researched:** 2026-06-17
+**Confidence:** HIGH
 
 ## Standard Architecture
 
 ### System Overview
 
 ```
-                         INTERNET
-                             |
-              ┌──────────────▼──────────────────┐
-              │      External Reverse Proxy       │
-              │  (Nginx / Caddy / Traefik / etc.) │
-              │  Terminates TLS (443 → 7080 HTTP) │
-              │  Routes coder.example.com         │
-              │  Routes *.apps.example.com        │
-              └──────────────┬──────────────────-─┘
-                             │ HTTP (plain)
-                             │ Host: coder.example.com OR *.apps.example.com
-                             │ X-Forwarded-For / X-Forwarded-Proto preserved
-                             ▼
-              ┌──────────────────────────────────┐
-              │         Docker host              │
-              │                                  │
-              │  ┌──────────────────────────┐    │
-              │  │    coder (container)     │    │
-              │  │  ghcr.io/coder/coder:X   │    │
-              │  │  0.0.0.0:7080            │◄───┼── :7080 published
-              │  │                          │    │
-              │  │  ┌─────────────────┐     │    │
-              │  │  │  coderd process │     │    │
-              │  │  │  (control plane)│     │    │
-              │  │  └────────┬────────┘     │    │
-              │  └───────────┼──────────────┘    │
-              │              │ DSN / TCP          │
-              │  ┌───────────▼──────────────┐    │
-              │  │   database (container)   │    │
-              │  │   postgres:17            │    │
-              │  │   (no published port)    │    │
-              │  │   ./data/postgres →      │    │
-              │  │   /var/lib/postgresql/data│   │
-              │  └──────────────────────────┘    │
-              │                                  │
-              │  /var/run/docker.sock ────────────┼─► coder container
-              │                                  │   (workspace provisioning)
-              │                                  │
-              │  ┌──────────────────────────┐    │
-              │  │  workspace containers    │    │
-              │  │  (created on-demand by   │    │
-              │  │   Terraform Docker prov) │    │
-              │  │                          │    │
-              │  │  ┌──────────────────┐   │    │
-              │  │  │  coder-agent     │   │    │
-              │  │  │  (startup script)│   │    │
-              │  │  │  code-server     │   │    │
-              │  │  │  JetBrains GW    │   │    │
-              │  │  │  Claude Code CLI │   │    │
-              │  │  │  MCP servers     │   │    │
-              │  │  └──────────────────┘   │    │
-              │  └──────────────────────────┘    │
-              └──────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Coder Server (compose.yaml)                                                │
+│  Templates provision workspaces via Docker socket                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Terraform Template (templates/docker/main.tf)                              │
+│                                                                             │
+│  ┌──────────────────┐  ┌────────────────────┐  ┌────────────────────────┐  │
+│  │  coder_agent     │  │  docker_volume     │  │  docker_volume         │  │
+│  │  "main"          │  │  home_volume       │  │  claude_config_volume  │  │
+│  │  (no count)      │  │  (no count)        │  │  (no count)            │  │
+│  │                  │  │  per-workspace     │  │  per-OWNER             │  │
+│  │  startup_script  │  │  UUID key          │  │  owner.id key          │  │
+│  │  runs ONCE       │  │                    │  │  prevent_destroy=true  │  │
+│  └────────┬─────────┘  └────────┬───────────┘  └───────────┬────────────┘  │
+│           │                     │                           │               │
+│  ┌────────▼────────────────────────────────────────────────▼────────────┐  │
+│  │  docker_container "workspace"  (count = start_count)                 │  │
+│  │                                                                      │  │
+│  │  volumes { /home/coder        ← home_volume (per-workspace)    }    │  │
+│  │  volumes { /home/coder/.claude-shared ← claude_config_volume   }    │  │
+│  │                                                                      │  │
+│  │  startup_script (via coder_agent):                                   │  │
+│  │    1. seed home from /etc/skel (existing, idempotent)                │  │
+│  │    2. chown /home/coder/.claude-shared → coder:coder                 │  │
+│  │    3. mkdir -p inside .claude-shared                                 │  │
+│  │    4. symlink ~/.claude → .claude-shared/dot-claude                  │  │
+│  │    5. symlink ~/.claude.json → .claude-shared/dot-claude.json        │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌──────────────────┐  ┌────────────────────┐  ┌────────────────────────┐  │
+│  │  module          │  │  module            │  │  module                │  │
+│  │  code-server     │  │  jetbrains-gateway │  │  claude-code           │  │
+│  │  count=start     │  │  count=start       │  │  count=start           │  │
+│  │  agent_id=main   │  │  agent_id=main     │  │  agent_id=main         │  │
+│  └──────────────────┘  └────────────────────┘  └────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
-
----
-
-## Component Boundaries
 
 ### Component Responsibilities
 
-| Component | Responsibility | Implementation |
-|-----------|----------------|----------------|
-| External reverse proxy | TLS termination; routes both the primary domain and `*.apps` wildcard to `:7080`; preserves `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`, `Upgrade` (WebSocket) headers | Operator-managed (Nginx/Caddy/Traefik); out of scope to build |
-| `coder` container (coderd) | Entire Coder control plane: web UI, API, workspace lifecycle, template registry, agent relay, MCP server endpoint | `ghcr.io/coder/coder:<version>`, pinned, `restart: unless-stopped` |
-| `database` container | Authoritative state store for all Coder data (users, workspaces, templates, audit log) | `postgres:17`, bind-mounted to `./data/postgres` |
-| Docker socket | IPC channel through which coderd's Terraform provisioner creates/destroys workspace containers on the same host | `/var/run/docker.sock` bind-mounted into the coder container |
-| Workspace container | Isolated developer environment; runs the coder-agent process plus IDE tooling | Provisioned by the Docker Terraform template; one container per workspace |
-| coder-agent | Long-running process inside workspace container; connects back to coderd over WireGuard tunnel; enables terminal, port-forward, IDE, and app access | Injected via `entrypoint` in the Docker template's `docker_container` resource |
-| Terraform template | Declarative definition of a workspace (providers, container config, volumes, agent, apps) stored in `templates/docker/` | Pushed to coderd via `coder templates push`; executed by the built-in Terraform provisioner |
-| scripts/backup.sh | Non-interactive `pg_dump` wrapper; writes timestamped dumps to `./backups/`; cron-friendly (meaningful exit codes) | Shell script; no Docker dependency beyond `docker exec` on the database container |
-| scripts/restore.sh | Non-interactive `pg_restore`/`psql` wrapper; restores a named dump file | Shell script; same interface contract as backup.sh |
+| Component | Responsibility | Key Attribute |
+|-----------|----------------|---------------|
+| `docker_volume.home_volume` | Per-workspace persistent `/home/coder`. Survives stop/start; deleted on workspace delete. | Keyed on `coder_workspace.me.id` (immutable UUID) |
+| `docker_volume.claude_config_volume` | Per-owner shared Claude config. Carries `~/.claude/` and `~/.claude.json` across ALL of this owner's workspaces. | Keyed on `coder_workspace_owner.me.id` (immutable UUID). `prevent_destroy = true` — survives workspace delete. |
+| `coder_agent.main` | Always-present. Generates token + init_script. Runs `startup_script` on workspace start. | No `count` — exists in stopped state too. |
+| `docker_container.workspace` | Ephemeral workspace container. Mounts both volumes. Runs entrypoint from `init_script`. | `count = start_count` — destroyed on stop. |
+| `module.claude-code` | Installs Claude Code CLI, wires `ANTHROPIC_API_KEY` env var, handles workdir trust prompt. | `count = start_count`, `agent_id = coder_agent.main.id` |
+| `module.code-server` | Browser VS Code (unchanged from v1.0). | `count = start_count`, `order = 1` |
+| `module.jetbrains-gateway` | JetBrains Gateway (unchanged from v1.0). | `count = start_count`, `order = 2` |
 
----
+## The Core Problem: File vs. Directory Mount
 
-## Data Flow
+Docker named volumes always mount as **directories**. There is no mechanism to mount a named volume at a file path. Claude Code has two config locations:
 
-### Request Flow: Web UI / API
+- `~/.claude/` — a **directory** (settings, commands, agents, skills, CLAUDE.md, session history)
+- `~/.claude.json` — a **file** at `$HOME` root (OAuth session, MCP servers, per-project state, feature flag caches, auth credentials)
 
-```
-Browser → External proxy (TLS) → :7080 (HTTP)
-    → coderd (coder container)
-        → Postgres (state read/write)
-    ← HTTP response
-← Browser
-```
+Mounting a named volume at `~/.claude.json` would silently turn it into a directory, which Claude Code cannot read as its JSON config file. `~/.claude.json` must be a regular file.
 
-### Request Flow: Workspace App (code-server, JetBrains)
+### Why CLAUDE_CONFIG_DIR Does Not Solve This
 
-```
-Browser → External proxy (TLS)
-    Host: <workspace-slug>--<app-slug>.apps.example.com
-    → :7080 (HTTP)
-    → coderd (wildcard routing: parses subdomain to identify workspace + app)
-    → coder-agent (WireGuard tunnel, port-forward to app port inside container)
-    ← streamed response / WebSocket
-← Browser
-```
+`CLAUDE_CONFIG_DIR` was proposed as a feature to relocate all Claude config under a custom directory (GitHub issue #25762, opened Feb 2026, still open, no implementation). A related bug report (issue #3833, closed "not planned") showed that even a partially-working `CLAUDE_CONFIG_DIR` still creates local `.claude/` directories in workspaces. The Claude Code docs do not document this variable as supported. **Do not rely on it.**
 
-The wildcard subdomain (`CODER_WILDCARD_ACCESS_URL=*.apps.example.com`) is what enables per-workspace, per-app URL isolation. Each workspace app gets a unique subdomain encoding the workspace and app slug. Without this, workspace apps cannot be served via the dashboard and `coder_app` resources have no routing surface. The external proxy must:
-- Hold a wildcard TLS cert for `*.apps.example.com` (or use on-demand TLS)
-- Forward ALL hostnames matching `*.apps.example.com` to `:7080` with the original `Host` header intact
-- Forward WebSocket upgrade headers (`Connection: Upgrade`, `Upgrade: websocket`)
+### Recommended Solution: Neutral Mount Point + Symlinks
 
-### Request Flow: Workspace SSH / Terminal
+Mount the shared volume at a **neutral subdirectory** (`/home/coder/.claude-shared`), then use the `startup_script` to create symlinks that point the canonical locations into it.
 
 ```
-Developer CLI (coder ssh) / Web terminal
-    → coderd relay (WireGuard)
-    → coder-agent (inside workspace container)
-    → shell / process
+/home/coder/
+  .claude-shared/          ← named volume (per-owner, shared)
+    dot-claude/            ← actual directory content for ~/.claude
+    dot-claude.json        ← actual file content for ~/.claude.json
+  .claude -> .claude-shared/dot-claude       ← symlink (startup_script)
+  .claude.json -> .claude-shared/dot-claude.json  ← symlink (startup_script)
 ```
 
-### Terraform Provisioning Flow
+Claude Code follows symlinks normally. Both locations resolve into the shared volume. One volume carries the complete Claude config surface. The symlinks are recreated idempotently on every workspace start by the `startup_script`.
+
+### Why Not Alternative (a): CLAUDE_CONFIG_DIR
+
+Unimplemented, undocumented, closed as "not planned." Unreliable.
+
+### Why Not Alternative (c): Two Separate Volumes
+
+Mounting one named volume at `/home/coder/.claude` and a second named volume at `/home/coder/.claude.json` would make `.claude.json` a directory, breaking Claude Code's JSON parsing. Even if the mount order were reversed, Docker cannot mount a named volume at a file path.
+
+## Nested Mount Layering Confirmation
+
+Mounting volume A at `/home/coder` and volume B at `/home/coder/.claude-shared` **works correctly** via Linux kernel mount namespaces. Docker applies mounts in declaration order; the child mount (`.claude-shared`) shadows that subdirectory of the parent mount (`/home/coder`) using the standard Linux mount namespace semantics. This is confirmed behavior — the kernel treats each mount point independently, and the child path takes precedence within its subtree.
+
+Key detail: the `volumes{}` blocks in `docker_container` must declare the parent path first, then the child. The kreuzwerker Docker Terraform provider serializes the `volumes{}` blocks in order, which aligns with correct mount ordering.
+
+## Recommended Project Structure (template changes)
 
 ```
-`coder templates push` (from local CLI or CI)
-    → coderd API (template version stored in Postgres)
-
-User creates workspace (web UI or CLI)
-    → coderd calls built-in Terraform provisioner
-    → Terraform evaluates templates/docker/main.tf
-        → Docker provider via /var/run/docker.sock
-            → docker pull (if needed)
-            → docker volume create (home persistence)
-            → docker container create/start
-                env CODER_AGENT_TOKEN=<token>
-                entrypoint: /tmp/coder-agent start
-    → coder-agent dials coderd (CODER_AGENT_TOKEN auth)
-    → Workspace status: "Running"
+templates/docker/
+└── main.tf              # MODIFIED — add claude_config_volume, second volumes{} block,
+                         #   extended startup_script, claude-code module, ANTHROPIC_API_KEY variable
 ```
 
-### Database Backup Flow
-
-```
-scripts/backup.sh (cron or manual)
-    → docker exec database pg_dump
-    → ./backups/coder_YYYYMMDD_HHMMSS.dump
-    exit 0 (success) / exit 1 (failure)
-
-scripts/restore.sh <dump-file>
-    → docker exec database pg_restore / psql
-    exit 0 (success) / exit 1 (failure)
-```
-
-### External Proxy Contract (Out-of-Scope Component, Documented)
-
-| Aspect | Requirement |
-|--------|-------------|
-| Inbound | Port 443 (HTTPS) |
-| Upstream | `http://localhost:7080` (or `http://coder:7080` if proxy runs in same Docker network) |
-| TLS cert (primary) | `coder.example.com` |
-| TLS cert (apps) | `*.apps.example.com` — wildcard cert required (DNS challenge) OR on-demand TLS per subdomain |
-| Hostnames to route | `coder.example.com` AND `*.apps.example.com` both go to `:7080` |
-| Headers to forward | `Host` (original, not rewritten), `X-Forwarded-For`, `X-Forwarded-Proto: https`, `Upgrade`, `Connection` |
-| WebSocket | Must be proxied without buffering (WS upgrade must pass through) |
-| Access URL env var | `CODER_ACCESS_URL=https://coder.example.com` |
-| Wildcard env var | `CODER_WILDCARD_ACCESS_URL=*.apps.example.com` |
-
----
-
-## Recommended Scaffold Layout
-
-```
-.                               # repo root
-├── compose.yaml                # production Docker Compose (refined from upstream)
-├── .env.example                # committed; all vars documented with placeholders
-├── .env                        # gitignored; operator fills this in
-├── .gitignore                  # ignores .env, data/, backups/
-│
-├── templates/
-│   └── docker/                 # Terraform workspace template
-│       ├── main.tf             # core: providers, coder_agent, docker_container, coder_app
-│       ├── variables.tf        # optional params exposed to workspace users
-│       └── .terraform.lock.hcl # pinned provider versions
-│
-├── scripts/
-│   ├── backup.sh               # pg_dump wrapper → ./backups/
-│   └── restore.sh              # pg_restore/psql wrapper ← ./backups/<file>
-│
-├── data/
-│   └── postgres/               # Postgres bind-mount target (gitignored)
-│       └── .gitkeep            # ensures dir exists in repo
-│
-└── backups/                    # dump output dir (gitignored)
-    └── .gitkeep
-```
-
-### Structure Rationale
-
-- **compose.yaml at root:** Standard Docker Compose convention; single file is sufficient at this scale.
-- **templates/docker/:** Terraform workspace template is a first-class project artifact, not a script. Subfolder allows multiple templates later (e.g., `templates/docker-gpu/`).
-- **scripts/:** Operational tooling separate from template Terraform. Scripts are shell, not Terraform — no provider init needed.
-- **data/postgres/:** Bind mount (not named volume) so Postgres WAL files are visible on host disk and directly accessible by backup scripts without `docker cp`. `.gitkeep` ensures dir pre-exists before `docker compose up`.
-- **backups/:** Separate from `data/` to allow distinct backup rotation policies; on same host disk so `pg_dump` output is immediate without network transfer. gitignored.
-- **.env.example:** Committed reference of every variable with safe placeholder values. `.env` is the operator's secret store, gitignored.
-
----
+No new files. No changes to compose.yaml. The modification is entirely within `templates/docker/main.tf`.
 
 ## Architectural Patterns
 
-### Pattern 1: Postgres Healthcheck Gate
+### Pattern 1: Per-Owner Immutable-Keyed Volume with prevent_destroy
 
-**What:** `database` service declares a `pg_isready` healthcheck. `coder` service has `depends_on: database: condition: service_healthy`. Compose will not start the coder container until Postgres accepts connections.
+**What:** Name the Claude config volume using the owner's immutable UUID. Apply `prevent_destroy = true` so workspace deletion does not destroy the auth/config that all workspaces share.
 
-**When to use:** Always — coderd will crash-loop if it reaches the DB DSN before Postgres is ready.
+**When to use:** Any resource that must outlive individual workspace lifecycles and is scoped to a user (not a workspace).
 
-**Trade-offs:** Adds a few seconds to cold-start. Eliminates a class of startup race conditions.
-
-```yaml
-database:
-  healthcheck:
-    test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-    interval: 5s
-    timeout: 5s
-    retries: 5
-
-coder:
-  depends_on:
-    database:
-      condition: service_healthy
-```
-
-### Pattern 2: Host Bind Mount for Postgres Data
-
-**What:** Postgres data directory mapped to a host path (`./data/postgres`) instead of a Docker named volume.
-
-**When to use:** Any deployment where backup scripts run on the host or dumps must be accessible without `docker cp`.
-
-**Trade-offs:** Named volume is more portable across hosts; bind mount requires the host path to exist before first start. The trade-off is intentional: operability over portability.
-
-```yaml
-database:
-  volumes:
-    - ./data/postgres:/var/lib/postgresql/data
-```
-
-### Pattern 3: Template Decoupled from Server Lifecycle
-
-**What:** The Terraform template (`templates/docker/`) is a separate artifact pushed to the server via `coder templates push`. It is not embedded in the compose file.
-
-**When to use:** Always with Coder — this is the intended model.
-
-**Trade-offs:** Template push is a manual bootstrap step (or CI step) that happens after server start, not as part of `docker compose up`. This is documented in the bootstrap order below and is expected.
-
-### Pattern 4: coder-agent Token Injection
-
-**What:** Coderd generates a unique `CODER_AGENT_TOKEN` per workspace provisioning run. The Terraform Docker template injects it as an environment variable into the workspace container. The agent process reads it at startup to authenticate back to coderd.
-
-**When to use:** This is the mandatory pattern for all Coder workspace templates — agent connectivity requires it.
+**Trade-offs:** The volume is never auto-cleaned by Terraform. Operators must manually remove orphaned volumes if a user is deleted. This is acceptable for auth/config data — losing it is worse than leaving it.
 
 ```hcl
-resource "docker_container" "workspace" {
-  env = [
-    "CODER_AGENT_TOKEN=${coder_agent.main.token}",
-  ]
-  entrypoint = ["sh", "-c", coder_agent.main.init_script]
+resource "docker_volume" "claude_config_volume" {
+  name = "coder-${data.coder_workspace_owner.me.id}-claude"
+
+  lifecycle {
+    ignore_changes  = [name]
+    prevent_destroy = true
+  }
+
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.purpose"
+    value = "claude-config"
+  }
 }
 ```
 
-### Pattern 5: Workspace App Routing via coder_app
+**Why `data.coder_workspace_owner.me.id` not `.name`:** The owner `id` is a stable UUID assigned at user creation. The owner `name` (username) can change. A username change would produce a new volume name, orphaning the old one. Always key on immutable IDs.
 
-**What:** Each tool exposed in a workspace (code-server, JetBrains Gateway button, Claude Code status) is declared as a `coder_app` resource in Terraform. Coderd uses these declarations to render dashboard app buttons and route subdomain requests.
+### Pattern 2: Neutral Mount Point + Startup-Script Symlinks
 
-**When to use:** Any tool that should be accessible from the Coder dashboard or via the wildcard subdomain.
+**What:** Mount the shared volume at a neutral path (not the canonical path Claude Code expects). Create symlinks from the canonical paths into the neutral mount point using the `startup_script`.
+
+**When to use:** When the target tool expects a mix of file and directory paths that a single Docker volume mount cannot satisfy simultaneously.
+
+**Trade-offs:** Symlinks add one level of indirection. The `startup_script` must run before Claude Code starts (it does — the agent script runs before any module). The symlinks must be idempotent (`-f` flag or `[ -L ]` guard). If Claude Code ever dereferences symlinks unexpectedly, behavior may differ — but Claude Code follows symlinks normally per standard POSIX behavior.
 
 ```hcl
-resource "coder_app" "code_server" {
-  agent_id     = coder_agent.main.id
-  slug         = "code-server"
-  display_name = "VS Code"
-  url          = "http://localhost:13337"
-  icon         = "/icon/code.svg"
-  subdomain    = true   # serves under wildcard apps domain
-  share        = "owner"
+resource "coder_agent" "main" {
+  # ...existing fields...
+
+  startup_script = <<-EOT
+    set -e
+
+    # Seed home from /etc/skel on the very first workspace start (idempotent).
+    if [ ! -f ~/.init_done ]; then
+      cp -rT /etc/skel ~
+      touch ~/.init_done
+    fi
+
+    # ── Claude Code config (per-owner shared volume) ─────────────────────────
+    # The shared volume is mounted at ~/.claude-shared (a neutral path).
+    # We create the internal structure and symlink ~/.claude + ~/.claude.json
+    # into it. Symlinks are idempotent — recreated on every start.
+
+    CLAUDE_SHARED="$HOME/.claude-shared"
+
+    # Fix ownership on first use (volume starts root-owned when empty).
+    if [ "$(stat -c '%U' "$CLAUDE_SHARED")" != "coder" ]; then
+      sudo chown -R coder:coder "$CLAUDE_SHARED"
+    fi
+
+    # Create internal structure.
+    mkdir -p "$CLAUDE_SHARED/dot-claude"
+
+    # Symlink ~/.claude → shared directory.
+    ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"
+
+    # Symlink ~/.claude.json → shared file (create if missing).
+    if [ ! -f "$CLAUDE_SHARED/dot-claude.json" ]; then
+      echo '{}' > "$CLAUDE_SHARED/dot-claude.json"
+    fi
+    ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
+  EOT
 }
 ```
 
-### Pattern 6: coder_ai_task for Coder Tasks
+**Note on `sudo`:** The `codercom/enterprise-base:ubuntu` image grants the `coder` user passwordless sudo. The `chown` is only needed on first use (when the volume is freshly created and root-owned). The `stat` guard prevents repeated sudo invocations.
 
-**What:** A workspace template becomes task-capable by including a `coder_ai_task` resource (Coder provider ≥ 2.13) that references the Claude Code module's `task_app_id`. The control plane uses this to label and track AI-driven task workspaces separately from interactive workspaces.
+### Pattern 3: claude-code Module Placement (count = start_count)
 
-**When to use:** Any template intended to support `coder tasks run`.
+**What:** Place the `claude-code` module alongside the other editor modules (`code-server`, `jetbrains-gateway`), all gated on `count = start_count`. Pass `agent_id` from the always-present `coder_agent.main`.
+
+**When to use:** All workspace-app modules in this template follow this pattern. It ensures `coder_app` resources are only registered when the workspace is running.
+
+**Trade-offs:** The module installs Claude Code CLI on every workspace start if not already present (the module's install script is idempotent). With `install_claude_code = true` and no version pin, it fetches the latest release each start. Pin `claude_code_version` to avoid churn.
 
 ```hcl
-module "claude_code" {
-  source                = "registry.coder.com/coder/claude-code/coder"
-  agent_id              = coder_agent.main.id
-  folder                = "/home/coder"
-  anthropic_api_key     = var.anthropic_api_key
-  experiment_report_tasks = true
+variable "anthropic_api_key" {
+  description = "Anthropic API key for Claude Code. Required for AI features."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
-resource "coder_ai_task" "main" {
-  sidebar_app_id = module.claude_code.task_app_id
+module "claude-code" {
+  count            = data.coder_workspace.me.start_count
+  source           = "registry.coder.com/coder/claude-code/coder"
+  version          = "5.2.0"
+  agent_id         = coder_agent.main.id
+  anthropic_api_key = var.anthropic_api_key
+  install_claude_code = true
+  order            = 3
 }
 ```
 
----
+**`order = 3`** places Claude Code after VS Code (`order = 1`) and JetBrains (`order = 2`) in the workspace UI app list.
 
-## Bootstrap / Build Order
+## Data Flow
 
-Dependencies are strict — each step depends on the prior completing successfully.
-
-```
-Step 1: docker compose up -d database
-        Wait for: service_healthy (pg_isready)
-        Produces: Running Postgres accepting connections
-
-        ↓
-
-Step 2: docker compose up -d coder
-        Wait for: coder healthcheck (HTTP GET /healthz → 200)
-        Produces: coderd API available at :7080
-        Note: depends_on in compose.yaml handles DB gate automatically
-
-        ↓ (manual or scripted, runs outside compose)
-
-Step 3: First admin user
-        Method A (recommended, headless): coder server create-admin-user
-          --postgres-url "$CODER_PG_CONNECTION_URL"
-          --username admin --email admin@example.com --password ...
-          (runs against DB directly; coder server must NOT be running, OR)
-        Method B (while server is running): visit https://coder.example.com
-          in browser; first user to sign up gets admin role automatically
-        Produces: Admin credentials for CLI login
-
-        ↓
-
-Step 4: coder login https://coder.example.com
-        (authenticates CLI session using admin credentials from Step 3)
-        Produces: ~/.config/coderv2/session token
-
-        ↓
-
-Step 5: coder templates push docker --directory ./templates/docker/
-        (uploads template to coderd; triggers Terraform plan validation)
-        Produces: "docker" template available in the UI
-
-        ↓
-
-Step 6: coder create <workspace-name> --template docker
-        (coderd calls Terraform provisioner → Docker socket → workspace container)
-        Produces: Running workspace with code-server + JetBrains Gateway
-```
-
-**Key dependency chain:**
-- DB must be healthy before coder starts (enforced by `depends_on` + healthcheck)
-- Coder API must be up before `coder login` can succeed
-- Admin user must exist before `coder login` (with credentials)
-- `coder login` session must be active before `coder templates push`
-- Template must exist before a workspace using it can be created
-
----
-
-## MCP Integration Points
-
-### Coder's Own MCP Server (inbound: external agents → Coder)
-
-Coderd exposes an HTTP MCP endpoint at `https://coder.example.com/api/experimental/mcp/http`. This requires enabling experiments on the server:
+### First Workspace Start (Empty Volume)
 
 ```
-CODER_EXPERIMENTS=oauth2,mcp-server-http
+Terraform apply
+  → docker_volume.claude_config_volume created (root-owned, empty)
+  → docker_volume.home_volume created (or reused)
+  → docker_container.workspace started
+      volumes[0]: home_volume → /home/coder
+      volumes[1]: claude_config_volume → /home/coder/.claude-shared
+  → coder_agent startup_script runs:
+      1. /etc/skel seeded → ~/.init_done created
+      2. chown /home/coder/.claude-shared → coder:coder
+      3. mkdir -p ~/.claude-shared/dot-claude
+      4. echo '{}' > ~/.claude-shared/dot-claude.json
+      5. ln -sfn ~/.claude-shared/dot-claude ~/.claude
+      6. ln -sf ~/.claude-shared/dot-claude.json ~/.claude.json
+  → module.claude-code startup script runs:
+      - installs claude CLI to ~/.local/bin/claude
+      - sets ANTHROPIC_API_KEY env via coder_env resource
+  → user runs `claude` → first-run auth → writes to ~/.claude.json (symlink) → persists in shared volume
 ```
 
-External agents (Claude Desktop, Cursor, custom agents) connect to this endpoint and can list workspaces, start/stop workspaces, run commands, and monitor agent activity. Authentication uses OAuth2 for remote clients or the Coder CLI token for local clients (`coder exp mcp configure claude-desktop`).
+### Subsequent Workspace Start (Existing Volume, Same Owner)
 
-### In-Workspace MCP (outbound: agent in workspace → external MCP servers)
+```
+Terraform apply (workspace 2 or restart)
+  → docker_volume.claude_config_volume: name already matches → no change
+  → docker_container.workspace started, same two volume mounts
+  → startup_script runs:
+      - ~/.init_done exists → skel seeded skipped
+      - chown guard: already coder-owned → skipped
+      - mkdir -p: idempotent
+      - ln -sfn: overwrites symlinks (idempotent with -f)
+      - dot-claude.json already exists → not overwritten
+  → ANTHROPIC_API_KEY already in env → Claude Code ready immediately
+  → user's auth, settings, skills from previous workspace are available
+```
 
-The Claude Code module installs the Claude Code CLI inside the workspace and can pre-configure MCP servers for the in-workspace agent. MCP server configuration is placed in the workspace via the startup script (typically written to `~/.config/claude/claude_desktop_config.json` or equivalent). The `ANTHROPIC_API_KEY` is passed from `.env` → compose env → `coder_agent` env block → workspace container environment → Claude Code CLI.
+### Workspace Delete + New Workspace (Same Owner)
 
----
+```
+Terraform destroy (workspace 1 deleted)
+  → docker_container destroyed
+  → docker_volume.home_volume destroyed (per-workspace, no prevent_destroy)
+  → docker_volume.claude_config_volume: prevent_destroy = true → RETAINED
 
-## Integration Points Summary
+New workspace created (workspace 2)
+  → docker_volume.claude_config_volume: same name (same owner id) → reused
+  → auth, settings, history preserved across the new workspace
+```
 
-| Boundary | Direction | Protocol | Notes |
-|----------|-----------|----------|-------|
-| External proxy → coderd | Inbound | HTTP/1.1 + WS | Must preserve `Host` header for wildcard routing |
-| coderd → Postgres | Outbound | TCP/5432 (DSN) | On internal Docker network; never published externally |
-| coderd → Docker socket | Outbound | Unix socket IPC | `/var/run/docker.sock`; requires docker group membership |
-| coder-agent → coderd | Outbound from workspace | WireGuard (UDP) + HTTPS relay | Agent dials coderd using `CODER_AGENT_TOKEN` |
-| Developer CLI → coderd | Outbound from developer machine | HTTPS | `coder login`, `coder ssh`, `coder templates push` |
-| External agent → Coder MCP | Inbound | HTTPS (HTTP MCP endpoint) | Requires `oauth2,mcp-server-http` experiments enabled |
-| In-workspace agent → MCP servers | Outbound from workspace | stdio or HTTP | Configured per template; `ANTHROPIC_API_KEY` in env |
-| backup.sh → Postgres | Local | `docker exec` | Runs on host; accesses container via Docker |
+## Integration Points
 
----
+### What Changes in templates/docker/main.tf
+
+| Location | Change Type | What |
+|----------|-------------|------|
+| `variable` block (new) | ADD | `variable "anthropic_api_key"` — sensitive string, default `""` |
+| After `docker_volume.home_volume` | ADD | `resource "docker_volume" "claude_config_volume"` with per-owner name, `prevent_destroy = true`, `ignore_changes = [name]` |
+| `docker_container.workspace` | MODIFY | Add second `volumes {}` block: `container_path = "/home/coder/.claude-shared"`, `volume_name = docker_volume.claude_config_volume.name` |
+| `coder_agent.main startup_script` | MODIFY | Append the Claude config setup block (chown guard, mkdir, symlinks) after the existing `/etc/skel` seed |
+| After `module.jetbrains-gateway` | ADD | `module "claude-code"` block with `count = start_count`, `agent_id`, `anthropic_api_key`, `version = "5.2.0"`, `order = 3` |
+| File header comment | MODIFY | Add `module claude-code` to the resources list |
+
+### What Does Not Change
+
+- `compose.yaml` — no changes
+- `scripts/` — no changes
+- `.env.example` — `ANTHROPIC_API_KEY` is passed as a Terraform variable at workspace build time, not as a Coder server env var. No compose-level change needed.
+
+### Build Order and Dependencies
+
+Terraform resolves these automatically via the dependency graph, but the logical order is:
+
+1. `data.coder_workspace_owner.me` — provides `id` for volume name (read-only, no creation)
+2. `coder_agent.main` — always created first (no count); provides `id` for modules and `init_script` for container entrypoint
+3. `docker_volume.home_volume` — no count; created/reused before container
+4. `docker_volume.claude_config_volume` — no count; created/reused before container; `prevent_destroy` means reuse on subsequent applies
+5. `docker_image.main` — no count; pulled once
+6. `docker_container.workspace` — `count = start_count`; depends on both volumes and agent; mounts both volumes
+7. `module.code-server`, `module.jetbrains-gateway`, `module.claude-code` — all `count = start_count`; depend on `coder_agent.main.id`; parallel with each other; independent of container resource
+
+**Critical ordering note:** The `startup_script` in `coder_agent` runs inside the container after the container starts. It runs before any module install scripts because the agent starts up, receives the startup script, and executes it before reporting ready to modules. The chown + symlink block must appear in `coder_agent.startup_script`, NOT in a module's post_install_script, to guarantee it runs before `claude-code` module tries to write `~/.claude.json`.
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Named Volume for Postgres Data
+### Anti-Pattern 1: Mounting Named Volume at ~/.claude.json
 
-**What people do:** Keep the upstream `coder_data` named volume for Postgres.
+**What people do:** Try to mount `docker_volume.claude_config_volume` with `container_path = "/home/coder/.claude.json"`.
 
-**Why it's wrong:** Named volume data lives in `/var/lib/docker/volumes/`, invisible on host filesystem. Backup scripts require `docker cp` or running `pg_dump` inside the container and piping out, making cron-friendly non-interactive scripts significantly harder. If the Docker daemon is reinstalled, named volumes may be lost.
+**Why it's wrong:** Docker always creates the mount point as a directory. Claude Code expects a JSON file at `~/.claude.json`. The mount creates a directory instead, Claude Code cannot parse it, and it fails silently or with a cryptic JSON error.
 
-**Do this instead:** Bind mount `./data/postgres` to `/var/lib/postgresql/data`. The directory is on host disk, backup scripts can `docker exec pg_dump` and redirect output directly to `./backups/`.
+**Do this instead:** Mount at a neutral path and symlink.
 
-### Anti-Pattern 2: CODER_ACCESS_URL set to localhost or 127.0.0.1
+### Anti-Pattern 2: Keying the Shared Volume on Owner Name (not ID)
 
-**What people do:** Leave upstream default `CODER_ACCESS_URL: "127.0.0.1"` in compose.yaml.
+**What people do:** `name = "coder-${data.coder_workspace_owner.me.name}-claude"`.
 
-**Why it's wrong:** Workspace containers resolve `CODER_ACCESS_URL` to dial back to coderd. `127.0.0.1` inside a workspace container points to the container itself, not the host. The coder-agent cannot connect; workspace is permanently "Connecting...".
+**Why it's wrong:** Owner usernames can be changed by a Coder admin. On the next workspace start, Terraform sees a name change, destroys the old volume (losing all auth/settings), and creates a new empty one.
 
-**Do this instead:** Set `CODER_ACCESS_URL` to the externally reachable URL (`https://coder.example.com`). This also disables the `*.try.coder.app` convenience tunnel (desired for production).
+**Do this instead:** `name = "coder-${data.coder_workspace_owner.me.id}-claude"` — the UUID never changes.
 
-### Anti-Pattern 3: Missing CODER_WILDCARD_ACCESS_URL
+### Anti-Pattern 3: No prevent_destroy on the Shared Config Volume
 
-**What people do:** Set only `CODER_ACCESS_URL`, omit `CODER_WILDCARD_ACCESS_URL`.
+**What people do:** Omit `prevent_destroy = true`, relying only on `ignore_changes = [name]`.
 
-**Why it's wrong:** Without the wildcard, workspace apps (code-server, port-forwarded services) cannot be served via subdomain routing. Users can still SSH and use the terminal, but app buttons in the dashboard either fail or fall back to path-based routing that the reverse proxy may not support.
+**Why it's wrong:** When a workspace is deleted (not stopped), Terraform runs `destroy`. Without `prevent_destroy`, it destroys the shared volume, taking all Claude auth and settings with it. The next workspace for the same owner starts with an empty volume.
 
-**Do this instead:** Always configure `CODER_WILDCARD_ACCESS_URL=*.apps.example.com` and ensure the external proxy has a wildcard cert and routes `*.apps.example.com` to `:7080`.
+**Do this instead:** Set `prevent_destroy = true`. The volume then requires explicit manual deletion if needed (acceptable trade-off for auth data).
 
-### Anti-Pattern 4: Pushing Templates Before Server is Ready
+### Anti-Pattern 4: Putting Symlink Logic in module.claude-code post_install_script
 
-**What people do:** Run `coder templates push` in an init script immediately after `docker compose up`.
+**What people do:** Pass the chown/symlink block as `post_install_script` to the `claude-code` module.
 
-**Why it's wrong:** The coderd API may not be ready even after the container starts. `coder login` will fail; `coder templates push` will fail with connection errors.
+**Why it's wrong:** The `claude-code` module may write to `~/.claude.json` as part of its workdir trust prompt setup. If symlinks aren't in place before that write, the module writes the real file at `~/.claude.json` on the home volume (not the shared volume). The next workspace loses that state.
 
-**Do this instead:** Gate bootstrap steps on the coderd healthcheck (`curl -sf http://localhost:7080/healthz`). Use a retry loop or a one-shot bootstrap container with `depends_on: coder: condition: service_healthy`.
+**Do this instead:** Put the chown/symlink block in `coder_agent.main.startup_script`, which runs before any module install scripts.
 
-### Anti-Pattern 5: Secrets in compose.yaml
+### Anti-Pattern 5: Relying on CLAUDE_CONFIG_DIR
 
-**What people do:** Hardcode `POSTGRES_PASSWORD`, `ANTHROPIC_API_KEY` directly in `compose.yaml` or commit `.env`.
+**What people do:** Set `CLAUDE_CONFIG_DIR=/home/coder/.claude-shared` as an environment variable, skip the symlink setup.
 
-**Why it's wrong:** Secrets end up in git history.
+**Why it's wrong:** `CLAUDE_CONFIG_DIR` is not documented by Anthropic, was requested as an enhancement (issue #25762, open), and a related bug was closed "not planned". Even in partially-working states it still creates local `.claude/` directories. Unreliable for production use.
 
-**Do this instead:** All secrets in gitignored `.env`. `.env.example` with placeholders is the only committed file. `compose.yaml` references variables via `${VAR}` syntax.
+**Do this instead:** Symlink approach — it works with the documented, stable config locations.
 
----
+## Reusable Pattern (Drop-in Snippet)
+
+The following pattern is designed to be copied into any future Coder Docker template. It assumes the template already has `coder_agent.main`, `data.coder_workspace_owner.me`, and `docker_container.workspace` following the v1.0 pattern.
+
+```hcl
+# ── [REUSABLE] Per-owner Claude Code config volume ──────────────────────────
+#
+# WHAT: A Docker named volume keyed on the owner's immutable UUID. Shared
+#   across ALL workspaces for this owner. Carries ~/.claude/ (directory)
+#   and ~/.claude.json (file) via a neutral mount point + symlinks.
+#
+# HOW TO USE:
+#   1. Add this docker_volume resource (below).
+#   2. Add the second volumes{} block to docker_container.workspace.
+#   3. Add the "Claude Code config" block to coder_agent.main.startup_script.
+#   4. Add the claude-code module (below).
+#   5. Add the anthropic_api_key variable.
+#
+# OPERATOR NOTES:
+#   - First run: volume starts empty. `claude auth login` authenticates once;
+#     auth persists to the shared volume for all future workspaces.
+#   - Concurrent writes: avoid running claude in two workspaces simultaneously
+#     for the same owner. ~/.claude.json is not write-safe under concurrent
+#     access (no file locking). Sequential use is safe.
+#   - Volume cleanup: `prevent_destroy = true` means Terraform never removes
+#     this volume. To fully remove it: `docker volume rm <name>` manually.
+#   - Volume name: coder-<owner-uuid>-claude. List with:
+#       docker volume ls -f label=coder.purpose=claude-config
+#
+# MOUNT LAYOUT INSIDE CONTAINER:
+#   /home/coder/.claude-shared/       ← named volume
+#   /home/coder/.claude-shared/dot-claude/     (actual ~/.claude contents)
+#   /home/coder/.claude-shared/dot-claude.json (actual ~/.claude.json contents)
+#   /home/coder/.claude  →  .claude-shared/dot-claude      (symlink)
+#   /home/coder/.claude.json  →  .claude-shared/dot-claude.json  (symlink)
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key for Claude Code (from console.anthropic.com)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+resource "docker_volume" "claude_config_volume" {
+  name = "coder-${data.coder_workspace_owner.me.id}-claude"
+
+  lifecycle {
+    ignore_changes  = [name]
+    prevent_destroy = true
+  }
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.purpose"
+    value = "claude-config"
+  }
+}
+
+# In docker_container.workspace, add alongside the home volume:
+#
+#   volumes {
+#     container_path = "/home/coder/.claude-shared"
+#     volume_name    = docker_volume.claude_config_volume.name
+#     read_only      = false
+#   }
+#
+# Declare AFTER the home volume volumes{} block (parent mount before child mount).
+
+# In coder_agent.main.startup_script, append AFTER the /etc/skel block:
+#
+#   # ── Claude Code config (per-owner shared volume) ─────────────────────
+#   CLAUDE_SHARED="$HOME/.claude-shared"
+#   if [ "$(stat -c '%U' "$CLAUDE_SHARED")" != "coder" ]; then
+#     sudo chown -R coder:coder "$CLAUDE_SHARED"
+#   fi
+#   mkdir -p "$CLAUDE_SHARED/dot-claude"
+#   if [ ! -f "$CLAUDE_SHARED/dot-claude.json" ]; then
+#     echo '{}' > "$CLAUDE_SHARED/dot-claude.json"
+#   fi
+#   ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"
+#   ln -sf  "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
+
+module "claude-code" {
+  count               = data.coder_workspace.me.start_count
+  source              = "registry.coder.com/coder/claude-code/coder"
+  version             = "5.2.0"
+  agent_id            = coder_agent.main.id
+  anthropic_api_key   = var.anthropic_api_key
+  install_claude_code = true
+  order               = 3
+}
+
+# ── [END REUSABLE] ───────────────────────────────────────────────────────────
+```
 
 ## Scaling Considerations
 
-This scaffold targets a single Docker host. Scaling concerns are provided for context, not current scope.
-
-| Scale | Architecture Adjustment |
-|-------|------------------------|
-| 1-20 developers | Current architecture (single host, single coderd, Postgres on same host) — no changes needed |
-| 20-100 developers | Move Postgres to a dedicated host or managed DB; separate backup host; consider pinning workspace containers to specific resources |
-| 100+ developers | Multi-host Coder deployment with workspace proxies; Kubernetes-based templates; HA Postgres; out of scope for this project |
-
-**First bottleneck on a single host:** Docker daemon concurrency — many simultaneous workspace starts will queue on the single Docker socket. Mitigate by staggering workspace start times.
-
-**Second bottleneck:** Postgres I/O — all Coder state (workspace status polling, audit log, template versions) goes through one Postgres instance. Moving to a dedicated Postgres host on a fast disk addresses this.
-
----
+| Concern | At 1 owner | At 10 owners | At 100 owners |
+|---------|------------|--------------|---------------|
+| Volume count | 1 claude volume + N home volumes | 10 claude + N homes | 100 claude + N homes — manageable; volumes are cheap |
+| Concurrent write risk | Low (1 person, 2+ workspaces rarely active together) | Moderate (same owner pattern) | Same — per-owner, not global; doesn't scale with user count |
+| Volume cleanup on user delete | Manual `docker volume rm` | Same | Automate with a cleanup script if needed |
+| First-auth UX | Once per owner ever | Same | Same |
 
 ## Sources
 
-- [Coder Docker Install](https://coder.com/docs/install/docker) — official compose baseline, env vars, socket setup
-- [Coder Reverse Proxy (Caddy)](https://coder.com/docs/tutorials/reverse-proxy-caddy) — proxy config, wildcard subdomain routing, port 7080
-- [Coder Template from Scratch](https://coder.com/docs/tutorials/template-from-scratch) — coder_agent, docker_container, coder_app wiring
-- [coder server create-admin-user CLI reference](https://coder.com/docs/reference/cli/server_create-admin-user) — headless first-user creation
-- [Coder Tasks docs](https://coder.com/docs/ai-coder/tasks) — coder_ai_task resource, Claude Code module, ANTHROPIC_API_KEY flow
-- [Coder MCP Server docs](https://coder.com/docs/ai-coder/mcp-server) — `coder exp mcp server`, HTTP MCP endpoint, experiments flag
-- [coder/modules GitHub — claude-code module](https://github.com/coder/modules/tree/main/claude-code) — module inputs, CODER_MCP_CLAUDE_API_KEY env, MCP config
-- [Coder Workspace Proxies](https://coder.com/docs/admin/networking/workspace-proxies) — wildcard subdomain architecture
-- Upstream `compose.yaml` in this repository — baseline for refinement
+- GitHub issue #25762 (anthropics/claude-code): `CLAUDE_CONFIG_DIR` enhancement request — open, unimplemented, Feb 2026. **HIGH confidence** (direct GitHub source).
+- GitHub issue #3833 (anthropics/claude-code): `CLAUDE_CONFIG_DIR` bug — closed "not planned". Confirms env var is undocumented and unreliable. **HIGH confidence**.
+- GitHub issue #24479 (anthropics/claude-code): `~/.claude.json` move to inside `~/.claude/` — open enhancement, no implementation. Confirms `~/.claude.json` is at home root as of current releases. **HIGH confidence**.
+- code.claude.com/docs/en/env-vars: Official Claude Code env var docs — no `CLAUDE_CONFIG_DIR` listed. **HIGH confidence**.
+- code.claude.com/docs/en/claude-directory: `~/.claude/` directory structure and `~/.claude.json` purpose. **HIGH confidence**.
+- Docker Forums (overlapping volume mounts): Confirms child mount shadows parent at Linux kernel mount namespace level. **MEDIUM confidence** (community, confirmed by Linux mount semantics).
+- Taesun Lee (Medium): Practical test confirming nested Docker volume mounts at dependent paths work. **MEDIUM confidence** (community test).
+- github.com/coder/coder discussions #7610: Per-user shared volume pattern using `owner_id`. Confirms `prevent_destroy` approach. **HIGH confidence** (official Coder community).
+- coder.com/docs/admin/templates/extending-templates/resource-persistence: Volume persistence lifecycle documentation. **HIGH confidence**.
+- github.com/coder/registry blob main/registry/coder/modules/claude-code/main.tf: Module variable list, `anthropic_api_key` wiring via `coder_env`. **HIGH confidence**.
+- `.devcontainer/devcontainer.json` (this repo): Confirms `claude-code-config` named volume mounted at `/home/node/.claude` (directory) works. Does not handle `~/.claude.json`. **HIGH confidence** (direct source read).
 
 ---
-*Architecture research for: Self-hosted Coder production scaffold (Docker Compose)*
-*Researched: 2026-06-16*
+*Architecture research for: Portable Claude Code config across Coder Docker workspaces*
+*Researched: 2026-06-17*

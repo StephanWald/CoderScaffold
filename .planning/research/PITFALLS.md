@@ -1,401 +1,253 @@
 # Pitfalls Research
 
-**Domain:** Self-hosted Coder production scaffold (Docker Compose, host-disk Postgres, backup/restore, Docker workspace template, Coder Tasks, MCP)
-**Researched:** 2026-06-16
-**Confidence:** HIGH — synthesized from STACK.md, ARCHITECTURE.md, FEATURES.md, upstream compose.yaml analysis, and domain knowledge across Coder internals, Postgres Docker conventions, and reverse-proxy contract details.
+**Domain:** Portable Claude Code config via shared Docker volume in a Coder workspace Terraform template
+**Researched:** 2026-06-17
+**Confidence:** HIGH
+
+This file covers failure modes specific to adding a per-owner shared Docker volume for `~/.claude/` and `~/.claude.json` to the existing `templates/docker/main.tf` template. Generic Docker advice is excluded; every pitfall is anchored to this codebase's concrete patterns.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: CODER_ACCESS_URL set to localhost or 127.0.0.1
+### Pitfall 1: Concurrent-Write Clobbering of Claude Session State
 
 **What goes wrong:**
-Workspace containers boot, the coder-agent tries to dial `CODER_ACCESS_URL` to register, resolves `127.0.0.1` to itself (the workspace container, not the host), and can never reach the Coder server. The workspace is permanently stuck at "Connecting..." and the developer sees no terminal, no IDE, no apps.
+Claude Code writes frequently to files inside `~/.claude/` — active session state, history, todo lists, and project metadata. When two of the same owner's workspaces run simultaneously (both mounting the same shared volume read-write), they see an eventually-consistent but unsynchronized view of the directory. Each process reads a stale snapshot, makes edits, and writes back — the last writer wins and silently discards the other's changes. Session history entries disappear. Todo items written in workspace A are gone when Claude resumes in workspace B. Projects directory can accumulate partial or duplicate entries.
 
 **Why it happens:**
-The upstream `compose.yaml` ships with `CODER_ACCESS_URL: "127.0.0.1"`. It works for demo purposes where the developer opens `localhost:7080` in a browser but does not create workspaces. Moving to production the compose file is edited minimally, the URL is left as-is, and the workspace breakage only surfaces once the first workspace is provisioned.
+Docker named volumes provide POSIX file semantics — no advisory locking, no atomic cross-process coordination. Claude Code is designed for single-user, single-active-session use and does not implement its own file locking. Two processes writing `~/.claude/todos.json` (or equivalent) through the same bind point will produce torn writes under concurrent access. The Coder template has no guard preventing two of the same owner's workspaces from running simultaneously.
 
 **How to avoid:**
-Set `CODER_ACCESS_URL` to the real externally-reachable URL in `.env` (`https://coder.example.com`). Never hardcode `127.0.0.1` or `localhost` in compose.yaml. Validate with: `curl -sf https://coder.example.com/healthz` from inside a workspace container.
+- In the README operator runbook, document the limitation explicitly: one active workspace per owner at a time avoids lost writes. This is the primary mitigation for v1.1.
+- For future hardening: a startup-script flock guard can prevent Claude from launching in a second workspace if a lock file is held in `~/.claude/.workspace.lock` (using `flock -n`). This is a v2+ enhancement.
+- Mount the volume `read_only = true` in workspace containers if Claude is only needed for reading config/auth (not an option if the user actively uses Claude in the workspace).
+- The Coder template can include a `coder_agent` `startup_script` warning that logs when the shared volume lock is already held.
 
 **Warning signs:**
-- All workspaces stuck at "Connecting..." indefinitely
-- `coder-agent` logs inside workspace container: `dial tcp 127.0.0.1:7080: connect: connection refused`
-- Setting `CODER_ACCESS_URL` is the first fix that clears it every time
+- User reports Claude "forgot" a task it just completed, or history shows gaps.
+- `~/.claude/` contains files with modification times from two different running containers at the same second.
+- `docker inspect` shows the same volume attached to two running containers under the same owner.
 
-**Phase to address:** Phase 1 (compose.yaml hardening / environment configuration)
+**Phase to address:**
+v1.1, Phase 1 (volume wiring) — document the caveat in the README at the same time the volume is introduced. The flock guard is a v2 enhancement and should be called out as a deferred item.
 
 ---
 
-### Pitfall 2: CODER_WILDCARD_ACCESS_URL unset or unrouted at the reverse proxy
+### Pitfall 2: File-vs-Directory Mount Trap for `~/.claude.json`
 
 **What goes wrong:**
-Without `CODER_WILDCARD_ACCESS_URL`, workspace apps (code-server, JetBrains Gateway, port-forwarded services) have no subdomain routing surface. Buttons appear in the Coder dashboard but clicking them either errors or falls back to path-based routing that breaks under typical reverse-proxy configurations. Even when the variable is set, if the external proxy does not route `*.apps.example.com` to `:7080`, apps return 404 or certificate errors.
+`~/.claude.json` is a file, not a directory. If you declare a `docker_volume` and mount it at `/home/coder/.claude.json`, Docker creates a directory named `.claude.json` at that path (volumes are always directory mounts). Claude Code then cannot read or write its global settings file because it finds a directory where it expects a plain file. The failure mode is silent on first start — Claude launches but uses defaults; on write it may silently fail or error depending on Claude version. The directory cannot be easily removed because it is a mount point.
 
 **Why it happens:**
-Two independent omissions: (1) the operator sets `CODER_ACCESS_URL` but does not realize `CODER_WILDCARD_ACCESS_URL` is a separate required variable, and (2) the operator sets the variable but forgets to add a second server block / virtual host for the wildcard in their reverse proxy.
+Docker volume mounts are always directories. The distinction between "mount a volume that contains a file" and "mount a volume at a file path" is not enforced by the Docker or Terraform provider — the provider will accept the mount declaration without error and Docker will create the directory.
 
 **How to avoid:**
-Always set both variables in `.env`. Add a wildcard TLS cert (`*.apps.example.com`) via DNS challenge to the reverse proxy. Add a second proxy rule that routes all of `*.apps.example.com` to `127.0.0.1:7080` with the original `Host` header preserved (do NOT rewrite `Host`). Validate: open code-server from the Coder dashboard and verify the browser URL is on the apps subdomain, not the main domain.
+Two correct approaches (pick one, be consistent):
+
+1. **`CLAUDE_CONFIG_DIR` relocation**: Set the environment variable `CLAUDE_CONFIG_DIR=/home/coder/.claude` in the `coder_agent` env block. When this variable is set, Claude Code stores its global config file inside that directory (as `config.json` or similar) instead of at `~/.claude.json`. This makes both `~/.claude/` and the global config file live inside the same shared volume, eliminating the need to mount `~/.claude.json` as a separate volume at all. This is the recommended approach.
+
+2. **Symlink approach**: Mount the shared volume at a neutral path (e.g. `/home/coder/.claude-shared`) and add a `startup_script` step that creates a symlink: `ln -sf /home/coder/.claude-shared/.claude.json /home/coder/.claude.json`. This works but introduces startup-script complexity and a race condition if Claude launches before the symlink is established.
 
 **Warning signs:**
-- code-server button in dashboard opens a blank page or 404
-- Browser URL for workspace apps is `coder.example.com/...` not `<slug>.apps.example.com/...`
-- `CODER_WILDCARD_ACCESS_URL` missing from `docker compose config` output
+- `ls -la /home/coder/.claude.json` inside a running container shows `drwxr-xr-x` (directory, not file).
+- Claude settings changes don't persist across workspace restarts.
+- Error log: `ENOTDIR` or `Is a directory` when Claude tries to open `~/.claude.json`.
 
-**Phase to address:** Phase 1 (compose.yaml hardening) + Phase 3 (template with workspace apps)
+**Phase to address:**
+v1.1, Phase 1 (volume wiring) — the `CLAUDE_CONFIG_DIR` approach must be in place before any testing; catching this during UAT would require a teardown and rebuild of already-provisioned volumes.
 
 ---
 
-### Pitfall 3: Postgres bind-mount directory wrong ownership (UID 999)
+### Pitfall 3: Owner-Name Keying Creates Orphaned Volumes on Username Change
 
 **What goes wrong:**
-The `postgres:17` image runs as UID/GID `999` (the `postgres` user). If the host directory (`./data/postgres`) is owned by any other UID — including `root` (created by `docker compose up` when the directory doesn't exist) — Postgres startup fails with `Permission denied` or silently refuses to initialize. The coder container crash-loops because the DB is never healthy.
+If the shared Claude volume name is keyed on `data.coder_workspace_owner.me.name` (the display username) instead of `data.coder_workspace_owner.me.id` (the immutable UUID), a Coder admin renaming the user causes Terraform to compute a new volume name on the next `terraform apply`. The provider destroys the old volume (and all Claude config, auth, and history in it) and creates a fresh empty volume under the new name. The prior volume becomes an orphan — visible in `docker volume ls` but no longer referenced by any template resource.
+
+The existing `docker_volume.home_volume` in this template already demonstrates the correct pattern: it keys on `data.coder_workspace.me.id` (workspace UUID) with a comment explicitly noting that workspace name can change and would orphan the volume.
 
 **Why it happens:**
-Developers create the directory with `mkdir` (owner = current user, e.g. UID 1000), or they let Docker Compose auto-create it (owner = root). Neither is UID 999. The postgres image does not chown the bind-mount target on startup — it only chowns on named-volume initialization.
+Developers copy the naming pattern but reach for `.name` because it produces human-readable volume names for debugging. The `data.coder_workspace_owner.me.name` field looks stable but is actually mutable.
 
 **How to avoid:**
-Before the first `docker compose up`, explicitly run:
+Key the shared Claude volume on the immutable owner UUID:
+
+```hcl
+resource "docker_volume" "claude_volume" {
+  name = "coder-claude-${data.coder_workspace_owner.me.id}"
+
+  lifecycle {
+    ignore_changes = [name]
+  }
+  ...
+}
+```
+
+Mirror `ignore_changes = [name]` exactly as the home volume does — this is already established convention in this template (see `docker_volume.home_volume`, line 125). The `ignore_changes` guard protects against any future name-format refactoring forcing an unintended destroy.
+
+Add a human-readable label for debugging (safe because labels are not the primary key):
+
+```hcl
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+```
+
+**Warning signs:**
+- After a username change, `docker volume ls | grep coder-claude` shows two volumes for the same logical owner.
+- Claude prompts for login on next workspace start (empty new volume).
+- `terraform plan` on a running workspace shows a `docker_volume` destroy + create instead of no-op.
+
+**Phase to address:**
+v1.1, Phase 1 (volume resource declaration) — must be correct from the first commit. Retrofitting after volumes are in production requires a manual data migration.
+
+---
+
+### Pitfall 4: Empty Volume Owned by Root — Claude Can't Write Config
+
+**What goes wrong:**
+A freshly created Docker named volume has its root directory owned by `root:root` with permissions `755`. The workspace container runs as the `coder` user (UID 1000). On first start, Claude Code attempts to write `~/.claude/credentials.json` (or equivalent) and gets `EACCES` — permission denied. The login flow fails silently: the browser OAuth completes, the callback writes the credential, the write fails, and on the next command Claude prompts for login again.
+
+**Why it happens:**
+Docker named volumes do not inherit the UID/GID of the process that first writes to them unless that first write happens as the right user. The `codercom/enterprise-base:ubuntu` image runs as UID 1000 (`coder`), but an empty volume presented at `/home/coder/.claude` starts owned by `root`. Unlike the home volume (which is seeded via the `cp -rT /etc/skel ~` step running as `coder`), the Claude volume has no seeding step that establishes the right ownership before Claude tries to use it.
+
+**How to avoid:**
+Add a `startup_script` step that runs before Claude initialization, establishing ownership on the shared volume mount point:
+
 ```bash
-mkdir -p ./data/postgres
-sudo chown -R 999:999 ./data/postgres
+# Ensure the shared Claude config directory is owned by the workspace user.
+# Required on first start (empty volume is root-owned by Docker).
+if [ ! -f ~/.claude/.owner_init ]; then
+  sudo chown -R coder:coder ~/.claude 2>/dev/null || true
+  mkdir -p ~/.claude
+  touch ~/.claude/.owner_init
+fi
 ```
-Add this step to the bootstrap documentation and to any setup script. Commit a `.gitkeep` inside `data/postgres/` so the directory exists in the repo — but `.gitkeep` does not set ownership, the chown must still happen.
+
+Alternatively, use a Terraform `null_resource` or the Docker provider's `volumes_from` / `mounts` with a `tmpfs` seeding container, but the startup script approach is simpler and consistent with this template's existing skel-seeding pattern.
+
+If the workspace image supports it, pre-create the directory in the Dockerfile with the correct UID. This is the cleanest fix but requires a custom image.
 
 **Warning signs:**
-- `docker compose logs database` shows `initdb: error: could not change directory` or `Permission denied`
-- `database` service never becomes healthy; `coder` container exits because of `depends_on` gate
-- `ls -lan ./data/postgres` shows owner as `0` (root) or `1000` (current user) instead of `999`
+- `ls -la /home/coder/ | grep .claude` shows `.claude` owned by `root` inside a running container.
+- Claude login loop: auth completes in browser, but `claude auth status` still reports unauthenticated.
+- `~/.claude/.credentials.json` does not exist after a completed OAuth flow.
 
-**Phase to address:** Phase 1 (compose.yaml hardening / data directory setup)
+**Phase to address:**
+v1.1, Phase 1 (volume wiring + startup script) — the permission fix must be part of the startup script added in the same commit as the volume mount.
 
 ---
 
-### Pitfall 4: Initializing Postgres into a non-empty or wrong-owned directory
+### Pitfall 5: `claude-code` Module Version Trap — v5 vs v4 and Conflict with Pre-Populated Volume
 
 **What goes wrong:**
-If the bind-mount target `./data/postgres` already contains data (from a prior Postgres major version, a failed init, or stale files), the `postgres:17` image exits immediately with `FATAL: could not open file "global/pg_filenode.map": No such file or directory` or `data directory has wrong ownership`. The container crashes before the healthcheck passes.
+Two sub-problems:
 
-**Why it happens:**
-Operators test with named volumes first, then switch to bind mounts but forget the directory isn't clean. Or they run `docker compose up` twice after a failed first run that left partial data. Or they accidentally mount the parent directory (e.g. `./data` instead of `./data/postgres`).
+**5a. Unnecessary v4 pin:** CLAUDE.md notes that `coder/claude-code v5.x` dropped `coder_ai_task` wiring. This project does NOT use Coder Tasks in v1.1 (deferred to v2). Using v4 just to get Tasks wiring that isn't being used introduces an unnecessary version lag and a misleading signal to future readers. v5.2.0 is the current maintained version and is the correct choice for pure Claude Code installation without Tasks.
+
+**5b. Module's first-run config step conflicts with a pre-populated shared volume:** The `coder/claude-code` module runs an install + configuration script during agent startup. If the shared volume already contains credentials and settings from a previous workspace start, the module's config step may overwrite or reset portions of the config (API key injection, model selection) in ways that conflict with the persisted state. Specifically, if the module writes `~/.claude.json` (or the `CLAUDE_CONFIG_DIR` target) unconditionally, it can clobber user-customized settings.
 
 **How to avoid:**
-Ensure `./data/postgres` is empty before first `docker compose up`. If re-initializing, `rm -rf ./data/postgres && mkdir -p ./data/postgres && sudo chown -R 999:999 ./data/postgres`. Verify the mount path in compose.yaml is the leaf directory, not the parent.
+- Use `coder/claude-code 5.2.0` (current stable, per CLAUDE.md). Do not use v4 unless `coder_ai_task` integration via the module is specifically needed.
+- Audit the module's startup behavior: check whether it writes config unconditionally or only when config is absent. Most Coder registry modules guard with `[ -f ~/.claude.json ] || ...` patterns. If the module does write unconditionally, pass the `ANTHROPIC_API_KEY` as a module variable (the module will inject it idempotently) rather than also writing it to the persisted config file.
+- The `CLAUDE_CONFIG_DIR` approach (Pitfall 2) gives the module a predictable, volume-backed location; the module should be told to use it via its `env` pass-through if it supports that variable.
 
 **Warning signs:**
-- `FATAL: database files appear to belong to a different PostgreSQL version` on container start
-- `data directory "/var/lib/postgresql/data" has wrong ownership` in container logs
-- `ls ./data/postgres` shows unexpected files before first run
+- User reports their Claude model preference or MCP server config resets on every workspace start.
+- `~/.claude/` shows modification times matching workspace start times, not user-edit times.
+- `terraform plan` shows `module.claude-code` triggering changes on every apply.
 
-**Phase to address:** Phase 1 (compose.yaml hardening)
+**Phase to address:**
+v1.1, Phase 1 (module wiring) — select the correct version and audit the module's idempotency before wiring the shared volume. If the module is not idempotent, add a guard in the startup script.
 
 ---
 
-### Pitfall 5: Postgres major-version data incompatibility on upgrade
+### Pitfall 6: Credential Location Assumptions — `~/.claude/.credentials.json` Not Inside Shared Path
 
 **What goes wrong:**
-Postgres data directories are not forward-compatible across major versions. Changing the image from `postgres:15` to `postgres:17` (or any major jump) with existing data in the bind mount causes the container to refuse to start and prints `FATAL: database files are incompatible with server`. `pg_upgrade` is required but cannot be run directly from a Docker image swap.
+Claude Code on Linux stores OAuth credentials at `~/.claude/.credentials.json`. If the shared volume is mounted only at `~/.claude/` (the directory), the credentials file is inside the shared volume and roams correctly. However, if the shared volume is mounted at `~/.claude/` but `~/.claude.json` (the global settings file, handled separately — see Pitfall 2) is stored outside the volume (e.g. at a hardcoded `~/.claude.json` path that is part of the home volume, not the shared volume), then settings persist per-workspace while credentials roam per-owner. The user is authenticated in one workspace and not in another.
+
+The `devcontainer.json` in this repository demonstrates this gap in a different context: it mounts the volume at `/home/node/.claude` (directory only) and makes no provision for `/home/node/.claude.json`. Any global settings in `.claude.json` are lost on devcontainer rebuild. This is a real, confirmed gap in the current devcontainer setup.
 
 **Why it happens:**
-Operators update the image tag thinking it is equivalent to a patch upgrade. The `postgres:17` tag gets patch updates automatically (safe), but switching from `postgres:15` to `postgres:17` is a major version change. This is easy to do accidentally when updating compose.yaml.
+The Claude config surface has two roots: the `~/.claude/` directory (credentials, projects, history) and `~/.claude.json` (global settings, model preferences, MCP server list). Developers mount the directory and assume that covers everything. It does not. `~/.claude.json` is a sibling of `~/.claude/`, not inside it.
 
 **How to avoid:**
-Pin the full major tag (e.g. `postgres:17`) and never change the major version without a migration plan. For major upgrades: (1) run a full `pg_dump` backup, (2) stop services, (3) wipe `./data/postgres`, (4) update image tag, (5) start DB, (6) restore from dump. Never do an in-place major version upgrade on a bind mount.
+Use the `CLAUDE_CONFIG_DIR` approach (see Pitfall 2): setting `CLAUDE_CONFIG_DIR=/home/coder/.claude` causes Claude Code to colocate the settings file inside the `.claude/` directory, eliminating the split. Verify after first login that `~/.claude/` contains all expected files and `~/.claude.json` does not appear as a separate file in the home directory.
+
+For the devcontainer specifically: add `~/.claude.json` awareness — either mount a second volume for it or adopt `CLAUDE_CONFIG_DIR` in the devcontainer feature config.
 
 **Warning signs:**
-- Container logs: `FATAL: database files are incompatible with server`
-- Log line: `The data directory was initialized by PostgreSQL version X, which is not compatible with this version Y`
-- Any recent change to `postgres:` image tag in compose.yaml
+- `ls -la /home/coder/` shows `.claude.json` as a regular file NOT on the shared volume (i.e., it is on the home volume, not the Claude volume).
+- After workspace recreation, model preferences or MCP server config reverts to defaults even though auth still works.
+- `docker inspect <claude-volume>` shows no `.claude.json` file inside when listing via `docker run --rm -v claude-vol:/data alpine ls /data`.
 
-**Phase to address:** Phase 1 (baseline) — document upgrade path; re-addressed in Phase 5 (operations/maintenance)
+**Phase to address:**
+v1.1, Phase 1 (volume design) — the `CLAUDE_CONFIG_DIR` decision eliminates this pitfall at design time. Also add a note to the devcontainer gap in the operator runbook.
 
 ---
 
-### Pitfall 6: pg_dump TTY corruption — missing `-T` flag on `docker compose exec`
+### Pitfall 7: Nested Mount Shadowing — `/etc/skel` Seeding Writes Into the Wrong Layer
 
 **What goes wrong:**
-Running `docker compose exec database pg_dump ... > backup.dump` without the `-T` flag causes Docker to allocate a pseudo-TTY. The TTY injects ANSI escape sequences and carriage-return characters into the binary dump stream, corrupting the file. The dump appears to succeed (exit 0), but `pg_restore` fails with `pg_restore: error: input file does not appear to be a valid archive`.
+The existing `startup_script` in `coder_agent.main` seeds the home directory from `/etc/skel` on first start:
 
-**Why it happens:**
-`docker compose exec` allocates a TTY by default when run interactively. Developers test the command interactively (it works), then copy it into a script. In the script context stdin is not a TTY, but stdout redirection still triggers TTY allocation without `-T` when using some shell configurations.
-
-**How to avoid:**
-Always include `-T` on every `docker compose exec` call in scripts:
 ```bash
-docker compose exec -T database pg_dump --format=custom ...
+if [ ! -f ~/.init_done ]; then
+  cp -rT /etc/skel ~
+  touch ~/.init_done
+fi
 ```
-Test restored dumps after every new backup script version by running `pg_restore --list backup.dump` which prints the table of contents without restoring — a corrupted file fails here immediately.
+
+When `~/.claude` is separately mounted as a Docker volume (a subpath mount over the home volume), Docker's nested mount semantics cause the `.claude` directory inside the home volume to be hidden by the Claude volume at that path. The `cp -rT /etc/skel ~` command sees `~/.claude` as the live Claude volume — NOT the home volume's `.claude` directory. If `/etc/skel/.claude/` contains any files (e.g. a default config seeded by the template author), those files are written into the shared Claude volume on the first workspace start of whoever starts first. This pollutes the shared volume with skel defaults, overwriting any pre-existing user config.
+
+Conversely, if the workspace image includes `/etc/skel/.claude.json`, the skel copy writes `.claude.json` into the home volume (the home volume path, not the Claude volume) because `.claude.json` is not shadowed by the Claude volume mount. This means `.claude.json` gets re-seeded from skel on every fresh home volume, ignoring any user customization stored in the Claude volume.
+
+**Why it happens:**
+The `cp -rT /etc/skel ~` pattern predates the nested mount design. It is correct for single-volume home setups but becomes unpredictable when subpath mounts are introduced.
+
+**How to avoid:**
+- Do not put anything in `/etc/skel/.claude/` or `/etc/skel/.claude.json` in the workspace image. Keep skel free of Claude paths — the shared volume is the canonical source of truth for all Claude config.
+- If the `startup_script` skel-seeding step needs to remain, add an explicit exclusion or change it to only seed specific known-safe files (`.bashrc`, `.profile`) rather than the entire skel tree.
+- The `~/.init_done` guard already prevents repeat seeding, so the shadowing risk only occurs on the very first workspace start per workspace — but that is when initial user config is most vulnerable.
+- After the mount is in place, verify with `docker inspect` that the Claude volume is mounted at `/home/coder/.claude` and that `ls /home/coder/.claude` shows volume contents, not skel contents.
 
 **Warning signs:**
-- `pg_restore: error: input file does not appear to be a valid archive (too short?)`
-- `file` command on the dump shows `ASCII text` instead of `PostgreSQL custom database dump`
-- Dump file contains visible text like `[?2004h` or `^[[` at the start
+- `~/.claude/` on the shared volume contains files with names matching `/etc/skel/.claude/` contents after first workspace start.
+- User's pre-existing Claude history is replaced with template defaults on first start.
+- The `~/.init_done` file exists but `~/.claude/` contents look like defaults, not the user's history.
 
-**Phase to address:** Phase 2 (backup/restore scripts)
+**Phase to address:**
+v1.1, Phase 1 (volume wiring + startup script audit) — review `/etc/skel` contents in the workspace image before wiring the nested mount. Add a comment to the startup script noting the Claude volume excludes skel coverage.
 
 ---
 
-### Pitfall 7: pg_restore over a live database without --clean --if-exists
+### Pitfall 8: Stale Auth / Token Refresh Racing Across Concurrent Workspaces
 
 **What goes wrong:**
-Running `pg_restore` into an existing database without `--clean --if-exists` causes conflicts: tables, sequences, and types already exist, and the restore errors out partway through with `ERROR: relation "X" already exists`. The database ends up in a partial, inconsistent state — neither fully old nor fully restored.
+Claude Code's OAuth credentials include a refresh token and a short-lived access token. When multiple workspaces are running simultaneously (or restart in quick succession), each workspace's Claude process may independently detect an expired access token and attempt to refresh it. Both processes write a new access token (and potentially a new refresh token) to `~/.claude/.credentials.json`. The second write clobbers the first refresh. If the OAuth server invalidates the old refresh token after first use, the credential file now contains a stale refresh token from the losing process — all subsequent token refreshes fail, requiring the user to re-authenticate.
 
 **Why it happens:**
-The restore command is written for a fresh database (the "disaster recovery" mental model) but is run against a live database that already has the Coder schema. This happens when testing restores on a running instance without dropping the schema first.
+OAuth PKCE / refresh flows are designed for single-client use. The credential file is not transactionally updated. Two writers racing to update the same JSON file with non-overlapping tokens results in one process holding valid tokens and one holding invalidated ones, with no way to know which view is authoritative.
 
 **How to avoid:**
-Always include `--clean --if-exists` in the restore script. These flags cause `pg_restore` to emit `DROP ... IF EXISTS` statements before recreating each object. Combine with `--no-owner --no-acl` to avoid role dependency errors. For full disaster recovery, also use `--create` and connect to `postgres` superuser database rather than the target database.
+- The primary mitigation is the same as Pitfall 1: one active workspace per owner at a time. Document in the README.
+- If users routinely run two workspaces simultaneously, consider credential isolation: each workspace gets its own credential store and shares only the non-sensitive config (settings, skills, MCP config). Auth is per-workspace. This trades convenience for correctness.
+- Monitor for `~/.claude/.credentials.json` modification times from multiple containers within the same minute — this is a signal of the race.
+- The flock guard (Pitfall 1 future work) would also prevent this, since only one Claude process would be active at a time.
 
 **Warning signs:**
-- `pg_restore: error: could not execute query: ERROR: relation "X" already exists`
-- Restore script exits nonzero but partial data is written
-- `SELECT count(*) FROM workspaces` returns different values before and after restore
-
-**Phase to address:** Phase 2 (backup/restore scripts)
-
----
-
-### Pitfall 8: PGPASSWORD not reaching the container process (interactive password prompt breaks cron)
-
-**What goes wrong:**
-Backup/restore scripts run fine interactively but hang when called from cron. The cron job never completes. Database operations that require a password get an interactive `Password:` prompt, and cron has no TTY to receive input — the process hangs until the cron timeout kills it, producing no dump.
-
-**Why it happens:**
-`PGPASSWORD` is set in the script's environment but `docker compose exec` creates a new environment for the container process. The variable must be passed explicitly. Some operators use `.pgpass` on the host but forget it only applies to `psql`/`pg_dump` run directly on the host, not inside the container via `docker exec`.
-
-**How to avoid:**
-Prefix every `docker compose exec` database command with the `PGPASSWORD` export in the same command, or use `docker compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" database pg_dump ...`. The `-e` flag passes the variable into the container process environment. Test non-interactively: run the script redirecting stdin from `/dev/null` to confirm it never prompts.
-
-**Warning signs:**
-- Cron job produces no output and no dump files, but exits 0
-- Running the script manually works; running it under `sudo -u cron_user` or without a terminal hangs
-- `jobs` shows the backup script process alive but stalled for minutes
-
-**Phase to address:** Phase 2 (backup/restore scripts)
-
----
-
-### Pitfall 9: Bootstrap ordering violation — admin user creation with server running
-
-**What goes wrong:**
-`coder server create-admin-user --postgres-url ...` is documented as a command that writes directly to the database. If it is run while `coderd` is also running, the behavior is undefined — the server may reject the direct-DB write, or both processes may interfere. The actual failure mode is that `coderd` detects the new user, marks it as incomplete, and the credentials do not work for login.
-
-**Why it happens:**
-Operators run `docker compose up` to start everything, then try to create the admin user against the running stack. The `create-admin-user` subcommand is a one-shot database seeding command, not an API call — it is designed for pre-server use.
-
-**How to avoid:**
-Use Method B instead: let `coderd` run and create the first admin account via the web UI at `https://coder.example.com` on first visit — the first user to register automatically receives the Owner role. If headless seeding is required, stop the `coder` container first: `docker compose stop coder`, run `create-admin-user` with `--postgres-url`, then `docker compose start coder`.
-
-**Warning signs:**
-- Admin credentials created via `create-admin-user` are rejected at login with "invalid credentials"
-- `coderd` logs show the user record in a pending/incomplete state
-- Both `coder` and `database` containers are running when `create-admin-user` is executed
-
-**Phase to address:** Phase 1 (compose.yaml hardening + bootstrap documentation)
-
----
-
-### Pitfall 10: Workspace home not persisted — Coder Tasks agent state lost on stop
-
-**What goes wrong:**
-Without a persistent Docker volume for `/home/coder`, every workspace stop/start cycle destroys the agent state. Coder's AgentAPI writes session state to the workspace home. For Coder Tasks, this means in-progress task state, Claude Code configuration, and MCP server configuration are lost every time a workspace stops. The task appears to start fresh with no history.
-
-**Why it happens:**
-Developers add a `docker_container` resource to the Terraform template without adding the corresponding `docker_volume` resource. The container is ephemeral by default; workspace home lives only in the container layer.
-
-**How to avoid:**
-Add a `docker_volume` resource named with the workspace ID (immutable) and mount it at `/home/coder`:
-```hcl
-resource "docker_volume" "home" {
-  name = "coder-${data.coder_workspace_owner.me.name}-${data.coder_workspace.me.id}-home"
-  lifecycle { ignore_changes = all }
-}
-```
-The `lifecycle { ignore_changes = all }` prevents Terraform from destroying the volume if the workspace is renamed. This is non-optional for Coder Tasks.
-
-**Warning signs:**
-- Claude Code settings reset on every workspace restart
-- MCP server configuration (`~/.config/claude/`) missing after workspace stop/start
-- Coder Tasks show "starting from scratch" on every run despite prior context
-- `docker volume ls` shows no volume for the workspace ID
-
-**Phase to address:** Phase 3 (Docker workspace template)
-
----
-
-### Pitfall 11: claude-code module v5 dropping coder_ai_task — Tasks UI never populated
-
-**What goes wrong:**
-The `claude-code` module v5 removed the built-in `coder_ai_task` wiring that existed in v4.x. Using module v5 with the expectation that it wires up Coder Tasks automatically produces a template where the Tasks UI shows nothing, and `coder tasks run` silently does nothing or errors.
-
-**Why it happens:**
-v4.x of the module had `experiment_report_tasks = true` and `task_app_id` output. v5 dropped both. Operators migrating from v4 examples or reading v4 docs expect the module to handle Tasks automatically.
-
-**How to avoid:**
-With `coder/claude-code 5.x`, wire `coder_ai_task` directly in the template:
-```hcl
-resource "coder_app" "claude" {
-  agent_id     = coder_agent.main.id
-  slug         = "claude"
-  display_name = "Claude Code"
-  icon         = "/icon/claude.svg"
-  open_in      = "slim-window"
-  command      = "claude"
-}
-
-resource "coder_ai_task" "task" {
-  count  = data.coder_task.me.enabled ? data.coder_workspace.me.start_count : 0
-  app_id = coder_app.claude.id
-}
-```
-Alternatively, use `coder/claude-code 4.x` if the auto-wiring is preferred, but note that 4.x is no longer the maintained version.
-
-**Warning signs:**
-- Coder Tasks UI shows the template but tasks never populate or run
-- `coder tasks run --template <name> "..."` exits 0 but no workspace is created
-- Template plan does not contain a `coder_ai_task` resource
-- Module version is `5.x` and no separate `coder_ai_task` resource exists in `main.tf`
-
-**Phase to address:** Phase 4 (Coder Tasks integration)
-
----
-
-### Pitfall 12: Docker socket GID mismatch — workspace provisioning silently fails
-
-**What goes wrong:**
-The `coder` container mounts `/var/run/docker.sock` to provision workspace containers. If the Coder process inside the container does not have write permission on the socket, `docker run` calls from the Terraform provisioner fail with `permission denied while trying to connect to the Docker daemon socket`. The workspace creation fails at the Terraform apply step with an opaque Docker provider error.
-
-**Why it happens:**
-The Docker socket on the host is typically owned by group `docker` (GID varies by distro — commonly `998` on Arch/RHEL, `999` on Debian/Ubuntu, `0` on some systems). The `coder` container's process runs as a non-root user that is not in that group. The `group_add` directive in compose.yaml is commented out in the upstream baseline.
-
-**How to avoid:**
-Check the host Docker socket GID: `stat -c '%g' /var/run/docker.sock`. Uncomment and set `group_add` in compose.yaml:
-```yaml
-coder:
-  group_add:
-    - "998"  # replace with actual docker GID from stat command
-```
-Alternatively, run a test: `docker compose exec coder docker ps` — if it works, the socket is accessible.
-
-**Warning signs:**
-- Workspace creation fails with `Error: error creating Docker container: permission denied`
-- `docker compose logs coder` shows `Got permission denied while trying to connect to the Docker daemon socket`
-- `docker compose exec coder docker ps` returns `permission denied`
-
-**Phase to address:** Phase 3 (Docker workspace template — first place Docker socket is exercised)
-
----
-
-### Pitfall 13: Workspace container agent using localhost to reach Coder server
-
-**What goes wrong:**
-When the Terraform template provisions a workspace container, the `coder_agent.init_script` embeds the `CODER_ACCESS_URL`. If `CODER_ACCESS_URL` is `https://coder.example.com` (correct), the agent dials the external URL — which works if the host's reverse proxy is reachable from the workspace container. However, in local/dev scenarios where `CODER_ACCESS_URL` is inadvertently set to an IP that resolves differently inside Docker, the agent cannot reach coderd.
-
-**Why it happens:**
-The workspace container is on a Docker bridge network. `host.docker.internal` is the correct way to reach the Docker host from inside a container. The upstream template shows a `replace()` call that rewrites `localhost`/`127.0.0.1` in `init_script` to `host.docker.internal` — this is mandatory for local setups but is sometimes omitted.
-
-**How to avoid:**
-Include the replace pattern in the Docker template:
-```hcl
-entrypoint = ["sh", "-c",
-  replace(coder_agent.main.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")
-]
-host {
-  host = "host.docker.internal"
-  ip   = "host-gateway"
-}
-```
-In production with a real `CODER_ACCESS_URL`, this replace is a no-op and causes no harm — always include it.
-
-**Warning signs:**
-- Workspace stuck at "Connecting..." in local/dev setup
-- Agent logs: `dial tcp [::1]:7080: connect: connection refused`
-- Works when `CODER_ACCESS_URL` is the real domain but fails when set to a local IP
-
-**Phase to address:** Phase 3 (Docker workspace template)
-
----
-
-### Pitfall 14: Reverse proxy rewrites Host header — workspace app routing breaks
-
-**What goes wrong:**
-Coder's wildcard subdomain routing uses the `Host` header to identify which workspace and app is being requested. If the reverse proxy rewrites `Host` to `127.0.0.1:7080` or `coder:7080` (common in naive proxy configs), all workspace app requests are misrouted. Code-server, JetBrains Gateway, and any port-forwarded app return 404 or a "workspace not found" error from coderd.
-
-**Why it happens:**
-Default nginx `proxy_pass` configurations set `proxy_set_header Host $host` (correct) but some proxy tutorials use `proxy_set_header Host $proxy_host` or omit the header entirely, causing the upstream host to default to the backend address.
-
-**How to avoid:**
-The reverse proxy must forward the original `Host` header:
-```nginx
-proxy_set_header Host $host;
-```
-It must also forward WebSocket upgrade headers:
-```nginx
-proxy_set_header Upgrade $http_upgrade;
-proxy_set_header Connection "upgrade";
-```
-And disable response buffering for streaming/terminal connections:
-```nginx
-proxy_buffering off;
-```
-Validate by opening code-server from the dashboard and inspecting the request `Host` header in browser devtools.
-
-**Warning signs:**
-- Workspace apps return 404 even though `CODER_WILDCARD_ACCESS_URL` is correctly set
-- Browser network tab shows `Host: 127.0.0.1:7080` on requests to workspace apps
-- Terminal in web UI freezes or disconnects frequently (buffering issue)
-- JetBrains Gateway connection repeatedly drops
-
-**Phase to address:** Phase 1 (proxy contract documentation) + Phase 3 (validation during template testing)
-
----
-
-### Pitfall 15: ANTHROPIC_API_KEY committed to git or exposed via template variables
-
-**What goes wrong:**
-The API key ends up in git history (via `.env` committed, or hardcoded in `main.tf`), or it is visible to workspace users via Terraform output or non-sensitive template variables. In the worst case, the key is exposed in `docker inspect` output on the workspace container.
-
-**Why it happens:**
-Operators hardcode the key during development for convenience. Template variables are declared without `sensitive = true`. The compose.yaml passes the key as a plain environment variable without sourcing from `.env`.
-
-**How to avoid:**
-Source from `.env` (gitignored): `ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}` in compose environment block. In the Terraform template, declare the variable with `sensitive = true`:
-```hcl
-variable "anthropic_api_key" {
-  type      = string
-  sensitive = true
-}
-```
-Never log or output it. In workspace containers, it is accessible in the environment but that is expected — it is scoped to the workspace owner.
-
-**Warning signs:**
-- `git log -p` shows `sk-ant-` in any committed file
-- `terraform plan` output shows the key value in plaintext
-- `docker inspect coder` reveals the key in `Env` array without masking
-
-**Phase to address:** Phase 1 (secrets/env pattern) + Phase 3 (template variables)
-
----
-
-### Pitfall 16: Postgres published on a host port in compose.yaml
-
-**What goes wrong:**
-Uncommenting the `ports: - "5432:5432"` block in the database service exposes Postgres to the network on the Docker host. Combined with weak passwords (the upstream defaults are `username`/`password`), this creates an externally accessible database — a common attack vector for credential stuffing and ransomware.
-
-**Why it happens:**
-Operators uncomment the port for convenience during development or debugging, then forget to remove it before deploying. The upstream compose.yaml helpfully comments this out by default.
-
-**How to avoid:**
-Never expose Postgres on a host port in production. Access the database from the host via `docker compose exec database psql` or by running `pg_dump` through the container. The Coder server reaches Postgres by the Docker Compose service name (`database:5432`) on the internal network — no host port needed.
-
-**Warning signs:**
-- `docker compose ps` shows `0.0.0.0:5432->5432/tcp` for the database service
-- `nmap localhost` shows port 5432 open
-- Firewall rules do not block port 5432 from external traffic
-
-**Phase to address:** Phase 1 (compose.yaml hardening)
+- Authentication errors appearing randomly after a period of working correctly.
+- `claude auth status` alternates between authenticated and unauthenticated across workspace restarts.
+- `~/.claude/.credentials.json` shows a modification time from a container that is no longer running.
+
+**Phase to address:**
+v1.1, Phase 1 — document in the README operator runbook alongside the concurrent-write caveat. Same root cause, same mitigation.
 
 ---
 
@@ -403,13 +255,12 @@ Never expose Postgres on a host port in production. Access the database from the
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| `CODER_VERSION: latest` in compose.yaml | Always runs newest Coder | Silent breaking upgrades on `docker compose pull`; impossible to roll back | Never in production — always pin a version |
-| Named volume instead of bind mount for Postgres | Zero setup (no chown needed) | Backup scripts require `docker cp` or helper containers; data invisible on host | Only for throwaway dev instances |
-| Hardcoded DB credentials (`username`/`password`) | Faster setup | Credential exposure if repo or logs are ever shared | Never — always override via `.env` |
-| Skipping `--clean --if-exists` in pg_restore | Simpler restore command | Partial restores on live databases leave schema in inconsistent state | Only when restoring to a verified empty database |
-| Skipping `lifecycle { ignore_changes = all }` on home volume | Simpler Terraform | Volume deleted and recreated on workspace rename, destroying developer's data | Never — always include for workspace home volumes |
-| Not testing restore after writing backup script | Saves time | Backups exist but are unrestorable (corrupted format, wrong flags) | Never — test restore before any production data accumulates |
-| Plain SQL dump (`-Fp`) instead of custom format (`-Fc`) | Human-readable output | No built-in compression; no selective restore; larger files | Only for ad-hoc inspection of schema structure |
+| Key shared volume on `owner.name` instead of `owner.id` | Human-readable volume names in `docker volume ls` | Volume destroyed on username rename; auth lost | Never — use `owner.id` with a name label for readability |
+| Mount shared volume without `ignore_changes = [name]` | Simpler HCL | Future name-format refactor destroys the volume | Never — mirror the existing home volume pattern |
+| Skip `CLAUDE_CONFIG_DIR` and mount `.claude.json` as a volume | Seems direct | Docker creates a directory at the file path; Claude silently fails | Never — the mount-at-file-path pattern does not work |
+| Omit the `chown` startup step and assume Docker sets correct ownership | Fewer startup-script lines | Login silently fails on first workspace start (write permission denied) | Never when running as non-root |
+| Use `coder/claude-code v4` "just in case" Tasks are needed later | Forward-compatible | v4 is older, less maintained; sends wrong signal to future readers | Only if `coder_ai_task` module wiring is actively needed this milestone |
+| Share volume read-write with no concurrent-use documentation | Simplest mount config | Lost writes, auth corruption if two workspaces run simultaneously | Acceptable for v1.1 if concurrent-use caveat is documented |
 
 ---
 
@@ -417,28 +268,12 @@ Never expose Postgres on a host port in production. Access the database from the
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| External reverse proxy | Rewrites `Host` header to backend address | `proxy_set_header Host $host` — forward original |
-| External reverse proxy | Buffers WebSocket/streaming responses | `proxy_buffering off` + forward `Upgrade`/`Connection` headers |
-| External reverse proxy | Single server block for `coder.example.com` only | Separate (or wildcard) block for `*.apps.example.com` routing to same upstream |
-| External reverse proxy | Self-signed cert on `*.apps.example.com` | Must be trusted by browsers — use Let's Encrypt DNS challenge or on-demand TLS |
-| Docker socket mount | GID not added to coder container | `group_add: [<docker-gid>]` in compose.yaml |
-| Coder MCP server (stdio) | Running `coder exp mcp server` as a persistent daemon | It is a stdio process — run it via the MCP client config, not as a background service |
-| Coder MCP HTTP endpoint | Expecting it to work without experiment flags | Requires `CODER_EXPERIMENTS=oauth2,mcp-server-http` on the server |
-| Terraform template push | Pushing before `coder login` succeeds | Gate template push on `curl -sf .../healthz` success; require login session first |
-| `coder_ai_task` resource | Using it with `coder/coder` provider `< 2.13` | Pin `required_providers { coder = { version = ">= 2.13" } }` |
-| PGPASSWORD with docker exec | Setting `PGPASSWORD` in shell but not passing to container | Use `docker compose exec -T -e PGPASSWORD="$PW" database ...` |
-
----
-
-## Performance Traps
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| All workspaces starting simultaneously | Docker daemon queues all container creates; workspaces appear to start but take 5-10 min | Document that concurrent starts compete for Docker socket; advise staggered starts | 5+ workspaces started at once |
-| Postgres on spinning disk or NFS | Coder state polling (workspace status, audit log writes) causes I/O wait; dashboard appears sluggish | Use SSD-backed host storage for `./data/postgres` | Any production use on slow storage |
-| Workspace images not pre-pulled | First workspace start triggers Docker pull; appears hung with no logs | Pre-pull base image on the host before first workspace: `docker pull <image>` | First workspace creation on a fresh host |
-| Backup script without exit-code check | Silently-failed dumps fill cron logs with success | `set -e` at top of backup script; verify dump file is non-zero size | At first backup failure |
-| Coder server restart while workspace is running | Workspace agents reconnect automatically via WireGuard retry logic; this is normally fine | None needed — by design | Not a trap; expected behavior |
+| `coder/claude-code` module + shared volume | Assume module is idempotent; skip reviewing startup behavior | Audit whether the module writes config unconditionally; add guards if needed |
+| Docker named volume at `~/.claude.json` (file path) | Declare a volume mount targeting the file directly | Use `CLAUDE_CONFIG_DIR=/home/coder/.claude` to move the settings file inside the directory volume |
+| `devcontainer.json` claude-code volume | Mount only `/home/node/.claude` (directory); assume `.claude.json` is covered | Either add `CLAUDE_CONFIG_DIR` to the devcontainer feature or acknowledge `.claude.json` is not persisted (documented gap) |
+| `docker_volume` resource naming | Use `owner.name` for readability | Use `owner.id` (UUID) as the volume name key; put `owner.name` in a label |
+| `cp -rT /etc/skel ~` with nested Claude volume mounted | Skel copies into the shared Claude volume on first start | Do not put Claude paths in `/etc/skel`; keep skel free of `~/.claude/` and `~/.claude.json` |
+| Terraform `lifecycle.ignore_changes` | Omit it, assuming the volume name never needs changing | Always include `ignore_changes = [name]` on any volume resource, mirroring the home volume convention |
 
 ---
 
@@ -446,43 +281,37 @@ Never expose Postgres on a host port in production. Access the database from the
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| `.env` committed to git | All secrets (DB password, API key, admin credentials) in git history | `.gitignore` includes `.env`; CI blocks commits containing `PGPASSWORD=` or `sk-ant-` patterns |
-| Postgres exposed on host port | Database directly reachable from network; credential stuffing, data exfiltration | Keep `ports:` commented out; access via `docker compose exec` only |
-| `ANTHROPIC_API_KEY` in non-sensitive Terraform variable | Key appears in `terraform plan` output, CI logs, Coder UI | Declare with `sensitive = true`; verify it is masked in plan output |
-| Docker socket mount without group restriction | Any process in the coder container has full Docker daemon access | Acceptable for single-host setup; document that the Coder container should be treated as a privileged service |
-| Weak default DB credentials never changed | `username`/`password` credentials are known defaults; any leaked `CODER_PG_CONNECTION_URL` is immediately usable | Override `POSTGRES_USER`, `POSTGRES_PASSWORD` in `.env` before first `docker compose up` |
-| `CODER_WILDCARD_ACCESS_URL` on a top-level domain | Cookie scope issues: cookies for `coder.example.com` bleed into `*.example.com` | Always use a dedicated subdomain: `*.apps.coder.example.com` not `*.example.com` |
+| Shared credential file accessible to all processes in the container | Any process in the workspace container can read `~/.claude/.credentials.json` (OAuth tokens) | This is inherent to the shared-volume model; acceptable if workspace containers are single-user. Do not multi-tenant workspace containers (one owner per container). |
+| Credential volume in a backup | `pg_dump` does not back up Docker volumes — credentials are not in the Postgres backup. But if a Docker volume is explicitly backed up (e.g. `docker run --volumes-from`), the credential file is in plaintext in the backup | Exclude Claude credential volumes from backup tooling; credentials should be re-obtained via OAuth, not restored from backup |
+| `ANTHROPIC_API_KEY` stored in the shared volume config | If written to `~/.claude/` config by the module or user, it is visible to all workspaces sharing the volume | Pass `ANTHROPIC_API_KEY` via `coder_agent.env` (injected at container start) rather than persisting it in the shared volume |
+| Wide volume permissions after `chown -R coder:coder ~/.claude` | Correct — `coder` owns the files. Not a problem for single-user workspaces. | If workspace containers ever run as multiple users, scope volume permissions appropriately; not a concern for this template's single-user model |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Postgres bind mount:** Directory exists in repo but ownership not set — verify `stat ./data/postgres` shows UID 999 before first `docker compose up`
-- [ ] **Backup script:** Script exists and is executable — verify by running it with `DUMP_FILE=$(mktemp)` then checking `pg_restore --list $DUMP_FILE` succeeds (proves non-corruption)
-- [ ] **CODER_ACCESS_URL:** Set in `.env` to a real URL — verify `docker compose config` shows it is NOT `127.0.0.1`
-- [ ] **CODER_WILDCARD_ACCESS_URL:** Set in compose.yaml/`.env` — verify by opening code-server from dashboard and confirming the URL is on the apps subdomain
-- [ ] **Workspace home volume:** `docker_volume` resource present in template — verify `docker volume ls` shows the volume after first workspace start
-- [ ] **coder_ai_task:** Resource present in template AND `data.coder_task.me` data source declared — verify Coder Tasks UI lists the template as task-capable
-- [ ] **claude-code module wiring:** Using v5 — verify a standalone `coder_ai_task` resource exists (module v5 does NOT include it)
-- [ ] **Docker socket GID:** `group_add` set in compose.yaml — verify `docker compose exec coder docker ps` succeeds
-- [ ] **Proxy websocket headers:** Reverse proxy config includes `Upgrade` and `Connection` passthrough — verify web terminal does not disconnect after 60 seconds of idle
-- [ ] **Secrets pattern:** `.env` in `.gitignore` AND not already tracked — verify `git ls-files .env` returns empty
-- [ ] **Postgres port not exposed:** `ports:` block under `database` is commented out — verify `docker compose ps` does not show `5432->5432`
+- [ ] **Volume ownership:** `ls -la /home/coder/.claude` inside a running container shows `coder:coder` ownership, not `root:root`
+- [ ] **Config colocation:** `ls /home/coder/.claude.json` should return "No such file" (the file is inside `~/.claude/` via `CLAUDE_CONFIG_DIR`); if it exists as a separate file, the volume design is incomplete
+- [ ] **Auth persistence:** Authenticate in workspace A, stop it, start workspace B for the same owner — `claude auth status` in workspace B shows authenticated without a new login
+- [ ] **Volume key:** `docker volume ls | grep coder-claude` shows volume names containing UUIDs, not human-readable usernames
+- [ ] **`ignore_changes`:** `terraform plan` on a workspace with no user changes shows no `docker_volume` diff
+- [ ] **Skel safety:** `ls /etc/skel/.claude 2>/dev/null` returns empty (no skel Claude paths in the workspace image)
+- [ ] **Devcontainer gap acknowledged:** README or operator runbook notes that `devcontainer.json` does not persist `~/.claude.json` (only `~/.claude/` is mounted)
+- [ ] **Module version:** `grep 'version' templates/docker/main.tf | grep claude` shows `5.2.0`, not a v4 pin
 
 ---
 
 ## Recovery Strategies
 
-| Pitfall Occurred | Recovery Cost | Recovery Steps |
-|-----------------|---------------|----------------|
-| CODER_ACCESS_URL was localhost, workspaces broken | LOW | Update `.env`, `docker compose restart coder`; workspaces must be stopped/started to pick up new agent URL |
-| Postgres bind mount bad ownership | LOW | `docker compose stop`, `sudo chown -R 999:999 ./data/postgres`, `docker compose start database` |
-| Postgres data initialized by wrong version | HIGH | Stop all services, `pg_dump` from the old version container, wipe `./data/postgres`, start with new version, restore from dump |
-| Corrupt backup dump (TTY corruption) | MEDIUM | Identify last known-good dump with `pg_restore --list`; fix script to add `-T`; re-dump immediately |
-| Partial restore (missing --clean) | MEDIUM | Stop `coder` service, drop and recreate the database in psql, restore again with `--clean --if-exists` |
-| API key committed to git | HIGH | Rotate key immediately at Anthropic console; use `git filter-repo` or BFG to scrub history; force-push; notify all collaborators to re-clone |
-| Workspace home volume deleted on rename | HIGH | Workspace data is gone; recreate from git clone; preventable with `lifecycle { ignore_changes = all }` |
-| Docker socket GID wrong, workspaces won't provision | LOW | `stat -c '%g' /var/run/docker.sock` to get correct GID; update `group_add` in compose.yaml; `docker compose restart coder` |
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Concurrent-write clobbering (lost history/todos) | MEDIUM | Stop all but one workspace for the owner; data already lost cannot be recovered; restore from a manual backup of `~/.claude/` if one was taken |
+| File-vs-directory mount trap | MEDIUM | Remove the mis-declared `docker_volume` resource, re-apply to destroy the directory-type volume, re-add with `CLAUDE_CONFIG_DIR` approach; re-authenticate |
+| Owner-name keying + username rename → orphaned volume | HIGH | Locate old volume via `docker volume ls`; copy contents to new UUID-keyed volume using a helper container (`docker run --rm -v old:/src -v new:/dst alpine cp -a /src/. /dst/`); remove old volume |
+| Empty volume root-owned → login fails silently | LOW | `docker exec <container> sudo chown -R coder:coder ~/.claude` if the container is running, or add the fix to startup script and restart workspace |
+| Module overwrites shared config on start | MEDIUM | Pin module to a version with idempotent config writes; manually restore config from a backup of `~/.claude/` |
+| Credential corruption from concurrent refresh | MEDIUM | `claude auth logout && claude auth login` in one workspace while all others are stopped; the shared volume now holds a fresh, valid credential |
+| Skel pollution of shared Claude volume | LOW | `docker run --rm -v <claude-vol>:/data alpine rm -rf /data/<skel-files>`; ensure `/etc/skel` is cleaned in the image |
 
 ---
 
@@ -490,37 +319,26 @@ Never expose Postgres on a host port in production. Access the database from the
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| CODER_ACCESS_URL = localhost | Phase 1: compose.yaml hardening | `docker compose config` shows real URL; workspace agent connects |
-| CODER_WILDCARD_ACCESS_URL missing/unrouted | Phase 1 (config) + Phase 3 (validate) | code-server opens on apps subdomain |
-| Postgres UID 999 ownership | Phase 1: data directory setup | `stat ./data/postgres` UID = 999 before `docker compose up` |
-| Non-empty/wrong-version data dir | Phase 1: bootstrap docs | Postgres starts healthy on first run |
-| Postgres major version upgrade path | Phase 1 (document); Phase 5+ (ops) | Upgrade runbook exists; tested with a backup/restore cycle |
-| pg_dump TTY corruption | Phase 2: backup script | `pg_restore --list <dump>` succeeds on every backup |
-| pg_restore over live DB | Phase 2: restore script | Restore script passes `--clean --if-exists`; tested on staging |
-| PGPASSWORD not reaching container | Phase 2: backup/restore scripts | Scripts tested with `stdin < /dev/null` (no TTY) |
-| Bootstrap ordering violation | Phase 1: bootstrap documentation | First-run instructions tested on a clean host |
-| Workspace home not persisted | Phase 3: Docker template | `docker volume ls` shows home volume after workspace start |
-| claude-code v5 missing coder_ai_task | Phase 4: Coder Tasks integration | `terraform plan` shows `coder_ai_task` resource; Tasks UI lists template |
-| Docker socket GID mismatch | Phase 3: Docker template | `docker compose exec coder docker ps` succeeds before creating first workspace |
-| Agent using localhost to reach Coder | Phase 3: Docker template | Agent connects in under 30s; no "Connecting..." timeout |
-| Reverse proxy Host header rewrite | Phase 1 (document) + Phase 3 (test) | Workspace app URL uses apps subdomain; terminal doesn't freeze |
-| ANTHROPIC_API_KEY in git | Phase 1: secrets pattern | `git log -p | grep sk-ant` returns empty |
-| Postgres port exposed | Phase 1: compose.yaml hardening | `docker compose ps` shows no 5432 host port mapping |
+| Concurrent-write clobbering | v1.1 Phase 1 — README runbook | `docker inspect` two running workspaces; confirm caveat is in README |
+| File-vs-directory mount for `.claude.json` | v1.1 Phase 1 — volume design + `CLAUDE_CONFIG_DIR` | `ls /home/coder/.claude.json` returns "No such file" in a running workspace |
+| Owner-name keying + missing `ignore_changes` | v1.1 Phase 1 — volume resource declaration | `terraform plan` no-ops on a workspace with no user changes |
+| Empty volume root-owned | v1.1 Phase 1 — startup script | `ls -la /home/coder/.claude` shows `coder:coder` ownership after first start |
+| Module version selection + idempotency | v1.1 Phase 1 — module wiring | Module version is 5.2.0; config in `~/.claude/` unchanged after second `terraform apply` |
+| Credential location split | v1.1 Phase 1 — volume design | No `.claude.json` file in home root; auth persists across workspace recreation |
+| Skel shadowing | v1.1 Phase 1 — startup script audit | No Claude paths in `/etc/skel`; `~/.claude/` contents after first start are from the shared volume, not skel |
+| Stale auth / token refresh race | v1.1 Phase 1 — README runbook | Concurrent-workspace section of README documents this risk |
 
 ---
 
 ## Sources
 
-- Upstream `compose.yaml` in this repository — baseline anti-patterns (localhost access URL, named volumes, commented group_add, default credentials)
-- STACK.md (this project) — UID 999 pattern, `-T` flag, `--clean --if-exists`, `PGPASSWORD` env var strategy, claude-code v5 dropping `coder_ai_task`
-- ARCHITECTURE.md (this project) — proxy contract (Host header, WebSocket, wildcard cert), bootstrap ordering, Docker socket GID, `host.docker.internal` replace pattern
-- FEATURES.md (this project) — persistent home requirement for Coder Tasks, `lifecycle { ignore_changes = all }` for home volume, dependency map
-- [Coder Docker Install docs](https://coder.com/docs/install/docker) — `CODER_ACCESS_URL` localhost warning (reproduced verbatim in upstream compose comment)
-- [Coder Tasks Core Principles](https://coder.com/docs/ai-coder/tasks-core-principles) — persistent storage requirement for AgentAPI state
-- [docker-library/postgres GitHub](https://github.com/docker-library/postgres) — UID 999 bind mount ownership convention
-- [Coder modules — claude-code](https://github.com/coder/modules/tree/main/claude-code) — v5 changelog confirming `task_app_id` output removed
+- `templates/docker/main.tf` — existing volume naming pattern (`workspace.id` + `ignore_changes = [name]`), skel-seeding startup script, established `data.coder_workspace_owner.me` data sources (HIGH — direct codebase read)
+- `.devcontainer/devcontainer.json` — confirmed gap: mounts `/home/node/.claude` only; `~/.claude.json` not mounted (HIGH — direct codebase read)
+- `CLAUDE.md` — `coder/claude-code v5.2.0` is current maintained; v4 only needed for `coder_ai_task` module wiring; `ANTHROPIC_API_KEY` lives in gitignored `.env` (HIGH — project documentation)
+- `.planning/PROJECT.md` — v1.1 milestone scope, deferred items, constraints (HIGH — project documentation)
+- Docker named volume behavior (directory ownership, subpath mount semantics) — well-established Docker Engine behavior, consistent across versions (HIGH — community consensus)
+- OAuth token refresh single-client assumption — standard OAuth 2.0 PKCE behavior; concurrent refresh invalidation is a known failure mode (HIGH — protocol specification)
 
 ---
-
-*Pitfalls research for: Self-hosted Coder production scaffold (Docker Compose, host-disk Postgres, Docker workspace template, Coder Tasks, MCP)*
-*Researched: 2026-06-16*
+*Pitfalls research for: Portable Claude Code config — shared Docker volume in Coder workspace template*
+*Researched: 2026-06-17*
