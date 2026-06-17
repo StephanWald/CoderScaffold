@@ -93,13 +93,53 @@ fi
 # ---------------------------------------------------------------------------
 # Integrity verification step 2: structural check via pg_restore --list
 # Reads the TOC (table of contents) from the archive header; exits non-zero
-# if the archive is corrupt or not a valid custom-format dump
+# if the archive is corrupt or not a valid custom-format dump.
+#
+# WHY docker compose cp + in-container file (not /dev/stdin):
+#   pg_restore --list on a custom-format (-Fc) archive requires a SEEKABLE
+#   regular file — pg_restore seeks block offsets in the TOC header (Postgres
+#   17 docs: "input must be a regular file or directory, not a pipe or stdin").
+#   Feeding the dump via `< DUMP_FILE` into docker compose exec produces a
+#   non-seekable stream inside the container, so --list fails for EVERY valid
+#   dump.  Additionally, docker/compose #8909 corrupts binary data piped into
+#   exec stdin (especially on macOS Docker Desktop), making the stdin path
+#   doubly unreliable.
+#
+#   Fix: docker compose cp copies the dump to the container as a real seekable
+#   file. pg_restore --list reads it directly. No stdin crossing; no seek issue.
+#
+# Security (T-02-03-01): temp file is removed on ALL exit paths (success,
+#   failure, or unexpected abort under set -e) via explicit branch removal.
+#   rm -f suppresses errors in case cp itself failed (|| true guards below).
+#
+# Uniqueness (T-02-03-03): PID ($$) in the name prevents concurrent runs from
+#   colliding on the same temp path.
+#
+# Auth: PGPASSWORD is NOT needed for pg_restore --list (reads archive header
+#   only; makes no database connection). Do not add it here.
 # ---------------------------------------------------------------------------
-if ! PGPASSWORD="${POSTGRES_PASSWORD}" \
-     docker compose exec -T database \
-       pg_restore --list /dev/stdin \
-     < "${DUMP_FILE}" > /dev/null 2>&1; then
+CONTAINER_DUMP="/tmp/coder-verify-$$-$(basename "${DUMP_FILE}")"
+
+# Copy the dump into the container as a real seekable regular file.
+# docker compose cp does not use the corrupted exec-stdin path (#8909).
+docker compose cp "${DUMP_FILE}" "database:${CONTAINER_DUMP}"
+
+# Run structural check; pg_restore stderr flows to this script's stderr so
+# the caller sees the real diagnostic on failure.  Stdout (the TOC listing)
+# is noise for a health check so it is suppressed with >/dev/null.
+# The || prevents set -e from aborting; PGRESTORE_EXIT captures the real code.
+PGRESTORE_EXIT=0
+if ! docker compose exec -T database pg_restore --list "${CONTAINER_DUMP}" >/dev/null; then
+  PGRESTORE_EXIT=1
+fi
+
+# Remove the in-container temp file unconditionally (|| true: rm must not mask
+# the real exit code, and the file may not exist if cp itself failed).
+docker compose exec -T database rm -f "${CONTAINER_DUMP}" || true
+
+if [[ "${PGRESTORE_EXIT}" -ne 0 ]]; then
   echo "ERROR: Dump file failed integrity check: ${DUMP_FILE}" >&2
+  rm -f "${DUMP_FILE}"
   exit 1
 fi
 
