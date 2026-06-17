@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Compose Hardening & Configuration** - Production-grade compose stack with persistence, pinned image, healthcheck, `.env` secrets, and public/wildcard URLs
 - [x] **Phase 2: Backup & Restore Scripts** - Non-interactive, cron-friendly `pg_dump`/`pg_restore` scripts using the bind-mount layout from Phase 1
-- [ ] **Phase 3: Docker Workspace Template** - Terraform template provisioning workspaces with code-server, JetBrains Gateway, persistent home, and reliable agent connectivity
+- [x] **Phase 3: Docker Workspace Template** - Terraform template provisioning workspaces with code-server, JetBrains Gateway, persistent home, and reliable agent connectivity (completed 2026-06-17)
 
 ## Phase Details
 
@@ -95,7 +95,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02-PLAN.md — README `## Workspace Template` section: push + metadata workflow, Docker socket GID resolution, local/production agent connectivity, home persistence [Wave 2]
+- [x] 03-02-PLAN.md — README `## Workspace Template` section: push + metadata workflow, Docker socket GID resolution, local/production agent connectivity, home persistence [Wave 2]
 
 ## Progress
 
@@ -106,4 +106,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Compose Hardening & Configuration | 2/2 | Complete | 2026-06-17 |
 | 2. Backup & Restore Scripts | 3/3 | Complete    | 2026-06-17 |
-| 3. Docker Workspace Template | 1/2 | In progress | - |
+| 3. Docker Workspace Template | 2/2 | Complete   | 2026-06-17 |
