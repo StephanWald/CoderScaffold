@@ -136,9 +136,16 @@ resource "coder_agent" "main" {
 
     # CR-01 upgrade-path fix: if ~/.claude is a real dir (pre-template workspace),
     # migrate contents into the shared volume before replacing with a symlink.
+    # WR-01: only remove the original if the copy actually succeeded, OR the
+    # source dir is empty (an empty source is a legitimate no-op). A masked copy
+    # failure on a non-empty dir must NOT be followed by rm -rf, or real config
+    # is destroyed while nothing was preserved.
     if [ ! -L "$HOME/.claude" ] && [ -e "$HOME/.claude" ]; then
-      cp -an "$HOME/.claude/." "$CLAUDE_SHARED/dot-claude/" 2>/dev/null || true
-      rm -rf "$HOME/.claude"
+      if cp -an "$HOME/.claude/." "$CLAUDE_SHARED/dot-claude/" 2>/dev/null \
+         || [ -z "$(ls -A "$HOME/.claude" 2>/dev/null)" ]; then
+        rm -rf "$HOME/.claude"
+      fi
+      # else: copy failed on a non-empty dir — leave original in place.
     fi
 
     # Symlink ~/.claude → shared directory (-sfn: -n treats target as file if symlink).
