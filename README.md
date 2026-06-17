@@ -234,3 +234,57 @@ The `coder_home` named volume stores the dev tunnel URL (`*.try.coder.app`). It 
 convenience — Coder recreates everything it needs on restart. You may safely remove it in
 production (`docker volume rm coder_coder_home`). Setting a real `CODER_ACCESS_URL` disables
 the dev tunnel entirely, making this volume unnecessary.
+
+---
+
+## Backup & restore
+
+`scripts/backup.sh` and `scripts/restore.sh` provide non-interactive database backup and restore.
+Both scripts read connection credentials from `.env` (`POSTGRES_USER`, `POSTGRES_PASSWORD`,
+`POSTGRES_DB`) and fall back to the compose.yaml defaults if `.env` is absent.
+
+### Taking a backup
+
+```bash
+./scripts/backup.sh
+```
+
+- Reads credentials from `.env`; no password prompt.
+- Writes a timestamped dump to `./backups/coder-YYYYMMDD-HHMMSS.dump` (directory is
+  created automatically; already gitignored).
+- Applies `chmod 600` to the dump immediately — the file contains all user data, workspace
+  metadata, and tokens.
+- Performs a two-step integrity check: non-zero size guard + `pg_restore --list` structural
+  verification. Exits non-zero if either check fails (cron-safe).
+- Prints a parseable `BACKUP_FILE=<path>` line on success for use in calling scripts.
+
+### Restoring a backup
+
+> **DESTRUCTIVE.** `restore.sh` runs `pg_restore --clean`, which drops all existing objects in
+> the target database before recreating them from the dump. Double-check you are pointing at the
+> intended stack and database before running — data not in the dump will be permanently lost.
+
+```bash
+./scripts/restore.sh ./backups/coder-YYYYMMDD-HHMMSS.dump
+```
+
+- Validates the dump-file argument before doing anything (regular file, non-zero size).
+- Stops the `coder` service before restoring, to release its database connection pool
+  (avoids `pg_restore --clean` deadlocking on active connections).
+- Runs `pg_restore --clean --if-exists --no-owner --no-acl` — handles both fresh-instance
+  restores (no existing objects to drop) and overwrites of an existing database.
+- Restarts `coder` automatically via an EXIT trap — even if the restore command fails.
+  After a failed restore, inspect logs with `docker compose logs -f coder`.
+
+### Cron and automation
+
+Both scripts are non-interactive and return meaningful exit codes, so they are safe to wrap
+in cron jobs or monitoring scripts. When calling from cron, use absolute paths:
+
+```bash
+# Example crontab entry — daily backup at 02:00 UTC
+0 2 * * * /opt/coder/scripts/backup.sh >> /var/log/coder-backup.log 2>&1
+```
+
+**Backup retention/pruning** is out of scope for v1 — operators prune `./backups/` manually
+or via a separate cleanup job (deferred to QOL-02 in v2).
