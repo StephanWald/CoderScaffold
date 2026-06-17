@@ -577,7 +577,9 @@ The following CLAUDE.md directives are binding for this phase:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All questions below are answered in-place by the recommendations and are wired into the Phase 2 plan task actions (path handling, stdout `BACKUP_FILE=` line, retention deferred to QOL-02/v2, idempotent `docker compose stop coder`).
 
 1. **Should `restore.sh` accept a relative or absolute path?**
    - What we know: Cron jobs run with cwd as `/` (or an arbitrary cwd); relative paths from cron callers will fail if the script doesn't resolve them.
