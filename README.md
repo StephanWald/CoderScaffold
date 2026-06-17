@@ -288,3 +288,105 @@ in cron jobs or monitoring scripts. When calling from cron, use absolute paths:
 
 **Backup retention/pruning** is out of scope for v1 — operators prune `./backups/` manually
 or via a separate cleanup job (deferred to QOL-02 in v2).
+
+---
+
+## Workspace Template
+
+The `templates/docker/` directory contains a Terraform template that provisions Coder workspaces
+as Docker containers on the host machine, with browser VS Code (via code-server), JetBrains
+Gateway (IntelliJ IDEA), and a persistent home directory.
+
+### Push the template
+
+Run the following from the repo root (requires the `coder` CLI logged in to your Coder server):
+
+```bash
+# Push the template — -y suppresses interactive prompts (safe for CI)
+coder templates push docker --directory templates/docker/ -y
+```
+
+Then set the display name, description, and icon. These are server-side settings — they are
+not Terraform-managed fields and must be set via `coder templates edit` (or the dashboard) after
+the initial push:
+
+```bash
+coder templates edit docker \
+  --display-name "Docker Workspace" \
+  --description "Docker container workspace with VS Code (browser) and JetBrains Gateway (IntelliJ IDEA). Home directory persists across stop/start." \
+  --icon "/icon/docker.png"
+```
+
+> **Note:** If you push a template update later, re-run `coder templates edit` to keep the
+> display name, description, and icon — they are not preserved automatically on re-push.
+
+### Create a workspace
+
+In the Coder dashboard, click **Templates → Docker Workspace → Create Workspace**, then click
+**Create**. No parameters to fill.
+
+Once the workspace agent connects (status shows **Connected**), two app buttons appear:
+
+- **VS Code** — opens a browser-based VS Code session (code-server) at `/home/coder`
+- **IntelliJ IDEA** — opens a JetBrains Gateway URL that connects your local Gateway client to
+  an IntelliJ IDEA server running inside the workspace container
+
+### Docker Socket Permissions
+
+If workspace provisioning fails with a permission error on `/var/run/docker.sock`, the Docker
+socket GID on your host differs from the container default. Fix it in two steps:
+
+1. Discover the GID of the host docker group:
+
+   ```bash
+   stat -c '%g' /var/run/docker.sock
+   ```
+
+2. In `compose.yaml`, uncomment the `group_add` block and set the GID to the value from step 1:
+
+   ```yaml
+   group_add:
+     - "998"  # Replace 998 with the output of: stat -c '%g' /var/run/docker.sock
+   ```
+
+3. Restart the Coder server to apply the change:
+
+   ```bash
+   docker compose up -d coder
+   ```
+
+> **GID varies by host distro:** Ubuntu is typically `998`, Debian `999`, Alpine `101`. The
+> correct value cannot be hardcoded — always discover it with `stat -c '%g' /var/run/docker.sock`
+> on the specific host.
+
+**Failure symptom:** Workspace provisioning fails immediately after "Pending" with a Docker API
+permission error. Run `docker compose logs coder` and look for `permission denied` on Docker
+socket operations.
+
+### Workspace Agent Connectivity
+
+**Local deployment (`CODER_ACCESS_URL=http://127.0.0.1:7080`):** The template adds
+`host.docker.internal` via an `extra_hosts` / `host-gateway` entry so the workspace agent
+can reach the Coder server from inside the container. No additional configuration required —
+the `host.docker.internal` replacement is baked into the container entrypoint automatically.
+
+**Production deployment (real `CODER_ACCESS_URL`):** With a real `CODER_ACCESS_URL` (an IP or
+domain reachable from workspace containers), `host.docker.internal` is not used. Set
+`CODER_ACCESS_URL` to a URL that workspace containers on the host network can reach — `127.0.0.1`
+will not work for non-Docker templates because it refers to the container's own loopback
+interface, not the host.
+
+**Failure symptom:** The workspace agent shows "Connecting" indefinitely and never transitions
+to "Connected". Check:
+
+- For local deployments: confirm `CODER_ACCESS_URL` is `http://127.0.0.1:7080` (the default).
+  The template automatically rewrites `127.0.0.1` → `host.docker.internal` in the agent
+  init script, and adds the `host-gateway` host entry so the workspace container can resolve it.
+- For production deployments: verify `CODER_ACCESS_URL` is reachable from a container running
+  on the Docker host network. `127.0.0.1` will not work — use a real IP or domain.
+
+### Home directory persistence
+
+Workspace home directories (`/home/coder`) are stored in per-workspace Docker volumes and
+survive workspace stop/start cycles. Deleting a workspace deletes its home volume — all files
+under `/home/coder` are permanently removed when the workspace is deleted.
