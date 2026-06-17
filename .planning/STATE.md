@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Portable Claude Code Setup
-status: planning
+status: executing
 stopped_at: Phase 4 context gathered
-last_updated: "2026-06-17T17:26:57.075Z"
-last_activity: 2026-06-17 — Milestone v1.1 roadmap created
+last_updated: "2026-06-17T18:08:59.962Z"
+last_activity: 2026-06-17 -- Phase 04 execution started
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-17)
 
 **Core value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
-**Current focus:** Phase 04 — portable-claude-config (roadmap complete, ready for planning)
+**Current focus:** Phase 04 — portable-claude-config
 
 ## Current Position
 
-Phase: 4 — Portable Claude Config
-Plan: —
-Status: Roadmap created, awaiting phase planning
-Last activity: 2026-06-17 — Milestone v1.1 roadmap created
+Phase: 04 (portable-claude-config) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-06-17 -- Phase 04 execution started
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Last activity: 2026-06-17 — Milestone v1.1 roadmap created
 | Phase 02-backup-restore-scripts P02 | 2min | 3 tasks | 2 files |
 | Phase 03-docker-workspace-template P01 | 2min | 2 tasks | 1 files |
 | Phase 03 P02 | 1min | 1 tasks | 1 files |
+| Phase 04-portable-claude-config P01 | 28 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -84,10 +85,17 @@ Recent decisions affecting current work:
 - [Phase 02-backup-restore-scripts P02]: Restore reads dump via stdin redirect (< ${DUMP_FILE}), not as pg_restore filename arg — avoids docker/compose exec binary corruption pattern (#8909)
 - [Phase ?]: Display name / description / icon documented as post-push step via coder templates edit — not Terraform-managed (RESEARCH.md Pitfall 6)
 - [Phase 04 — pre-planning OPEN]: CLAUDE_CONFIG_DIR (env var, simpler) vs neutral-mount+symlinks (reliable, no undocumented behavior) — must be resolved empirically before coding; default recommendation is symlinks (Option B)
+- [Phase 04-01]: Neutral-mount + symlink approach locked (D-01) — CLAUDE_CONFIG_DIR rejected (undocumented, issue #25762 open, #3833 closed not planned)
+- [Phase 04-01]: Volume name coder-${owner-uuid}-claude keyed on owner UUID not username — rename-safe (D-03)
+- [Phase 04-01]: prevent_destroy=true on claude_config_volume — workspace deletion never destroys shared auth (D-03)
+- [Phase 04-01]: anthropic_api_key variable defaults to "" — OAuth first-run login is default path, API key is inert override (D-07)
+- [Phase 04-01]: claude_code_version intentionally unpinned — latest-on-start (D-06, deliberate exception to pin-everything ethos)
+- [Phase 04-01]: [REUSABLE] drop-in snippet shipped inline in main.tf — no separate example file (D-08)
+- [Phase 04-01]: terraform/tofu not in env — grep assertions served as authoritative validation gate for this plan
 
 ### Pending Todos
 
-- Resolve Open Decision before Phase 4 coding: validate CLAUDE_CONFIG_DIR empirically or commit to symlink approach — see research/SUMMARY.md "OPEN DECISION" section
+- Plan 04-02: README operator runbook (D-09, D-10)
 
 ### Blockers/Concerns
 
@@ -105,10 +113,10 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-06-17T17:13:34.851Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-portable-claude-config/04-CONTEXT.md
+Last session: 2026-06-17T18:08:59.950Z
+Stopped at: Completed 04-01-PLAN.md (portable Claude config template changes)
+Resume file: None
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 4` to create the Phase 4 execution plan
+- Run `/gsd-execute-phase 4` plan 2 to execute 04-02-PLAN.md (README operator runbook)

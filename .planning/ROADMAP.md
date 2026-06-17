@@ -40,7 +40,7 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 **Plans**: 2 plansPlans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — main.tf: anthropic_api_key variable, per-owner claude_config_volume, .claude-shared mount, startup_script symlinks, claude-code module, inline [REUSABLE] snippet (CLAUDE-01..06)
+- [x] 04-01-PLAN.md — main.tf: anthropic_api_key variable, per-owner claude_config_volume, .claude-shared mount, startup_script symlinks, claude-code module, inline [REUSABLE] snippet (CLAUDE-01..06)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -55,4 +55,4 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 | 1. Compose Hardening & Configuration | v1.0 | 2/2 | Complete | 2026-06-17 |
 | 2. Backup & Restore Scripts | v1.0 | 3/3 | Complete | 2026-06-17 |
 | 3. Docker Workspace Template | v1.0 | 2/2 | Complete | 2026-06-17 |
-| 4. Portable Claude Config | v1.1 | 0/2 | Not started | - |
+| 4. Portable Claude Config | v1.1 | 1/2 | In Progress|  |

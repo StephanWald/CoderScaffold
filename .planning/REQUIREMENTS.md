@@ -11,15 +11,15 @@ Requirements for the Portable Claude Code Setup milestone. Each maps to roadmap 
 
 ### Claude Code Integration
 
-- [ ] **CLAUDE-01**: Claude Code is installed and enabled in the Docker workspace template via the `coder/claude-code` module (v5.2.0)
-- [ ] **CLAUDE-02**: A per-owner Docker volume (keyed on the owner UUID, rename-safe via `ignore_changes=[name]`, destroy-protected) is provisioned and shared across all of a user's workspaces
-- [ ] **CLAUDE-03**: The full Claude config surface — `~/.claude/` and `~/.claude.json` (auth, settings, skills, user-scoped MCP servers) — lives on the shared volume
-- [ ] **CLAUDE-04**: The shared volume is writable by the `coder` user on first start (ownership resolved in `startup_script` before Claude Code runs)
-- [ ] **CLAUDE-05**: First-run login works on an empty volume — authenticate once, and subsequent workspaces start already authenticated (no API key required by default)
+- [x] **CLAUDE-01**: Claude Code is installed and enabled in the Docker workspace template via the `coder/claude-code` module (v5.2.0)
+- [x] **CLAUDE-02**: A per-owner Docker volume (keyed on the owner UUID, rename-safe via `ignore_changes=[name]`, destroy-protected) is provisioned and shared across all of a user's workspaces
+- [x] **CLAUDE-03**: The full Claude config surface — `~/.claude/` and `~/.claude.json` (auth, settings, skills, user-scoped MCP servers) — lives on the shared volume
+- [x] **CLAUDE-04**: The shared volume is writable by the `coder` user on first start (ownership resolved in `startup_script` before Claude Code runs)
+- [x] **CLAUDE-05**: First-run login works on an empty volume — authenticate once, and subsequent workspaces start already authenticated (no API key required by default)
 
 ### Reusability & Operator Docs
 
-- [ ] **CLAUDE-06**: The shared-Claude-config pattern is documented as a reusable, drop-in snippet any future template can adopt
+- [x] **CLAUDE-06**: The shared-Claude-config pattern is documented as a reusable, drop-in snippet any future template can adopt
 - [ ] **CLAUDE-07**: README operator section covers first-run login, what is shared, seeding behavior, and the concurrent-workspace write caveat
 
 ## Future Requirements
@@ -58,15 +58,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLAUDE-01 | Phase 4 | Pending |
-| CLAUDE-02 | Phase 4 | Pending |
-| CLAUDE-03 | Phase 4 | Pending |
-| CLAUDE-04 | Phase 4 | Pending |
-| CLAUDE-05 | Phase 4 | Pending |
-| CLAUDE-06 | Phase 4 | Pending |
+| CLAUDE-01 | Phase 4 | Complete |
+| CLAUDE-02 | Phase 4 | Complete |
+| CLAUDE-03 | Phase 4 | Complete |
+| CLAUDE-04 | Phase 4 | Complete |
+| CLAUDE-05 | Phase 4 | Complete |
+| CLAUDE-06 | Phase 4 | Complete |
 | CLAUDE-07 | Phase 4 | Pending |
 
 **Coverage:**
+
 - v1.1 requirements: 7 total
 - Mapped to phases: 7
 - Unmapped: 0 ✓
