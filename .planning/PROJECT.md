@@ -14,20 +14,19 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- ✓ Postgres data persists across container recreation via a named volume by default (`coder_pgdata`, cross-platform); a host-disk bind mount is opt-in via `CODER_PG_DATA_DIR=./data/postgres` (Linux, requires `chown 999:999`) — Phase 1
+- ✓ `.env.example` committed; local `.env` (gitignored) holds all configuration — Phase 1
+- ✓ `CODER_ACCESS_URL` set from `.env` to the public-facing URL, which disables Coder's convenience dev tunnel — Phase 1
+- ✓ `CODER_WILDCARD_ACCESS_URL` configured so workspace apps resolve under a wildcard subdomain — Phase 1
+- ✓ Coder server image pinned to a specific version (not `:latest`) with restart policy and healthcheck — Phase 1
+- ✓ Document the external-reverse-proxy contract: scaffold serves HTTP on `7080`; an upstream proxy terminates TLS and routes the wildcard apps subdomain — Phase 1
+- ✓ `pg_dump` backup script writing dumps to host disk, parameterized and cron-friendly (clean exit codes, no interactive prompts) — Phase 2
+- ✓ `pg_restore` restore script that restores a dump into the database — Phase 2
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Postgres data persists across container recreation via a named volume by default (`coder_pgdata`, cross-platform); a host-disk bind mount is opt-in via `CODER_PG_DATA_DIR=./data/postgres` (Linux, requires `chown 999:999`)
-- [ ] `pg_dump` backup script writing dumps to host disk, parameterized and cron-friendly (clean exit codes, no interactive prompts)
-- [ ] `pg_restore` restore script that restores a dump into the database
-- [ ] `.env.example` committed; local `.env` (gitignored) holds all configuration
-- [ ] `CODER_ACCESS_URL` set from `.env` to the public-facing URL, which disables Coder's convenience dev tunnel
-- [ ] `CODER_WILDCARD_ACCESS_URL` configured so workspace apps resolve under a wildcard subdomain
-- [ ] Coder server image pinned to a specific version (not `:latest`) with restart policy and healthcheck
-- [ ] Document the external-reverse-proxy contract: scaffold serves HTTP on `7080`; an upstream proxy terminates TLS and routes the wildcard apps subdomain
 - [ ] Docker-based Terraform workspace template provisioning dev containers
 - [ ] Template wires code-server (embedded VSCode) into workspaces
 - [ ] Template supports JetBrains Gateway (IntelliJ) connectivity into workspaces
@@ -69,7 +68,7 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 |----------|-----------|---------|
 | Postgres data on named volume by default (`coder_pgdata`), host bind mount opt-in via `CODER_PG_DATA_DIR` | Revised in Phase 1 (01-01): bind-mounted PGDATA crash-loops Postgres on macOS/Windows Docker Desktop (VirtioFS denies chown). pg_dump backups run via `docker compose exec -T` and are transparent to the storage backend, so host-visible files aren't needed; named volume is cross-platform and drops the chown prerequisite. Bind mount stays available for operators who want host-visible files (Linux). | ✓ Phase 1 |
 | TLS via external reverse proxy, not bundled | Operator already terminates TLS upstream; keeps scaffold simple and HTTP-only | — Pending |
-| Backup = scripts only, cron-friendly (no scheduler) | Want backup primitives now; scheduling integrated later | — Pending |
+| Backup = scripts only, cron-friendly (no scheduler) | Want backup primitives now; scheduling integrated later | ✓ Phase 2 — `scripts/backup.sh` + `scripts/restore.sh`, non-interactive with clean exit codes; round-trip UAT verified |
 | Include Docker workspace template with VSCode + IntelliJ | Core developer experience goal for the instance | — Pending |
 | Coder Tasks (agent-agnostic), default Claude/Anthropic | Avoid locking to one agent while matching current toolchain | — Pending |
 | MCP both ways: Coder's MCP server + in-container MCP | Drive Coder from external agents and equip in-workspace agents | — Pending |
@@ -93,4 +92,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-16 after initialization*
+*Last updated: 2026-06-17 after Phase 2*
