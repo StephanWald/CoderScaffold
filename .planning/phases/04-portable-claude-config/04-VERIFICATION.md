@@ -1,40 +1,44 @@
 ---
 phase: 04-portable-claude-config
-verified: 2026-06-17T00:00:00Z
-status: gaps_found
-score: 4/5 must-haves verified
+verified: 2026-06-17T20:00:00Z
+status: human_needed
+score: 5/5 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "Operator runs claude in a fresh workspace; after authenticating once, a second workspace for the same owner starts already authenticated with no login prompt (SC-1) — AND two of the same owner's workspaces share one authenticated Claude session via ~/.claude and ~/.claude.json on the per-owner volume (SC-2 and SC-3)"
-    status: failed
-    reason: "ln -sfn does not replace a pre-existing real ~/.claude directory. If the home volume (persistent across stop/start) already contains a real ~/.claude directory — the exact situation for any workspace upgraded from phase-03 or any workspace where Claude was run before this template applied — ln -sfn nests the symlink inside the existing directory rather than replacing it. The shared volume is then silently bypassed for ~/.claude. The portability guarantee fails with no error signal. The ~/.claude.json case is worse: ln -sf replaces the file with the symlink but discards the original content silently (WR-01). CR-01 from the code review is independently confirmed: no guard (if [ ! -L ]; then rm -rf) or migration (cp -an) appears anywhere in templates/docker/main.tf."
-    artifacts:
-      - path: "templates/docker/main.tf"
-        issue: "Lines 143-147: ln -sfn \"$CLAUDE_SHARED/dot-claude\" \"$HOME/.claude\" does not remove a pre-existing real directory; ln -sf \"$CLAUDE_SHARED/dot-claude.json\" \"$HOME/.claude.json\" silently discards pre-existing real file content"
-    missing:
-      - "Guard for existing ~/.claude directory before symlinking: if [ ! -L \"$HOME/.claude\" ]; then rm -rf \"$HOME/.claude\"; fi (optionally preceded by cp -an migration into shared volume)"
-      - "Guard for existing ~/.claude.json file before symlinking: if [ -f \"$HOME/.claude.json\" ] && [ ! -L \"$HOME/.claude.json\" ]; then cp -n ... ; rm -f ...; fi"
+re_verification:
+  previous_status: gaps_found
+  previous_score: 4/5
+  gaps_closed:
+    - "Pre-existing real ~/.claude directory migrated before ln -sfn so symlink is never nested inside surviving real dir (CR-01)"
+    - "Pre-existing real ~/.claude.json preserved into shared volume with cp -f BEFORE {} placeholder can shadow it (WR-01)"
+    - "Unconditional rm -rf after masked copy failure eliminated — rm now conditional on copy success or empty source (WR-01/04-REVIEW WR-01)"
+    - "First-run chown made non-fatal under set -e (WR-03/04-REVIEW WR-03)"
+    - "README volume-cleanup comment no longer claims deletion is 'not data-unsafe'; now warns permanently destroys auth, settings, skills, MCP config (WR-03 prose)"
+  gaps_remaining: []
+  regressions: []
 human_verification:
-  - test: "Verify README WR-03 wording: the cleanup comment says 'not data-unsafe' but deleting the volume permanently destroys personal skills and MCP config"
-    expected: "The comment in README.md line 444 should warn that deletion permanently destroys auth, settings, personal skills, and MCP config — not merely forces a re-login"
-    why_human: "This is a prose accuracy judgment about blast-radius framing that goes beyond grep; a code reviewer (CR WR-03) flagged it as misleading but it does not rise to a programmatic FAIL"
-  - test: "Live workspace smoke test: create workspace A for owner X, run claude and complete OAuth login. Stop workspace A. Create workspace B for the same owner X. Open a terminal in B and run claude — confirm no login prompt appears"
-    expected: "claude starts already authenticated in workspace B; credentials from the per-owner volume are present"
-    why_human: "Requires a running Coder server and Docker host; cannot be automated statically"
-  - test: "Upgrade-path smoke test (CR-01 risk surface): use a workspace whose home volume already contains a real ~/.claude directory (pre-phase-04 workspace). Apply the new template, restart the workspace, and verify that ~/.claude is a symlink pointing to the shared volume — not a real directory with a nested dot-claude symlink inside it"
-    expected: "After restart, ls -la ~/.claude shows a symlink to .claude-shared/dot-claude. This test will FAIL until the CR-01 fix is applied."
-    why_human: "Requires a workspace with a pre-existing real ~/.claude directory on its persistent home volume"
-  - test: "Isolation check: create workspaces for two different owners X and Y. Confirm docker volume ls -f label=coder.purpose=claude-config shows two distinct volumes with different UUIDs in their names. Confirm X's credentials do not appear in Y's workspace."
-    expected: "Two separate coder-<uuid>-claude volumes; each owner sees only their own Claude session"
-    why_human: "Requires a running Coder server with two distinct owner accounts"
+  - test: "Live authentication smoke test: create workspace A for owner X. Open terminal, run 'claude', complete OAuth/subscription login. Stop workspace A. Create workspace B for the same owner X. Open terminal in B and run 'claude'."
+    expected: "claude starts already authenticated in workspace B — no login prompt. Credentials from the per-owner volume are present transparently."
+    why_human: "Requires a running Coder server and Docker host. Cannot be verified statically."
+  - test: "Upgrade-path smoke test (CR-01 fix validation): take a workspace whose persistent home volume already contains a real ~/.claude directory (pre-phase-04 workspace or any workspace where claude was run before this template applied). Apply the new template, restart the workspace. Run 'ls -la ~/.claude' in the workspace terminal."
+    expected: "~/.claude is a symlink: .claude -> .claude-shared/dot-claude. It is NOT a real directory, and there is no nested dot-claude symlink inside a surviving real directory."
+    why_human: "Requires a workspace with a pre-existing real ~/.claude directory on its persistent home volume. The static code review confirms the guard logic is correct, but live execution in an upgrade scenario is required to confirm no regression."
+  - test: "Content-preservation smoke test (WR-01 fix validation): take a workspace whose home volume contains a real ~/.claude.json with real auth data. Apply the new template, restart. Run 'cat ~/.claude.json' in the workspace terminal and check the shared volume contents."
+    expected: "The real auth content is preserved in the shared dot-claude.json on the shared volume. ~/.claude.json is a symlink. The {} placeholder was NOT substituted for real auth data."
+    why_human: "Requires a workspace with a pre-existing real ~/.claude.json containing auth material. The cp -f ordering fix is verified by code inspection, but live execution confirms no edge case."
+  - test: "Idempotency test: stop and start the same workspace twice after the symlinks are established."
+    expected: "The [ ! -L ] guards fire as no-ops on the second and subsequent starts. No repeated migration, no errors, ~/.claude and ~/.claude.json remain symlinks."
+    why_human: "Requires a running workspace. Static analysis confirms the guard condition (! -L) is a no-op once symlinks exist."
+  - test: "Owner isolation test: create workspaces for two different Coder owners X and Y. Run 'docker volume ls -f label=coder.purpose=claude-config' on the Docker host. Authenticate as X in X's workspace. Open Y's workspace and run 'claude'."
+    expected: "Two distinct volumes with different UUID segments in their names. Y's workspace has no access to X's credentials and starts unauthenticated."
+    why_human: "Requires a running Coder server with two distinct owner accounts."
 ---
 
-# Phase 04: Portable Claude Config — Verification Report
+# Phase 04: Portable Claude Config — Re-Verification Report
 
 **Phase Goal:** A developer authenticates with Claude Code once and finds their credentials, settings, skills, and MCP servers waiting in every subsequent workspace — including newly created ones.
-**Verified:** 2026-06-17
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-06-17T20:00:00Z
+**Status:** human_needed
+**Re-verification:** Yes — after gap closure (previous status: gaps_found, score 4/5)
 
 ## Goal Achievement
 
@@ -42,57 +46,58 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Operator runs `claude` in fresh workspace; after authenticating once, second workspace starts already authenticated (SC-1) AND two workspaces share one authenticated session on a single per-owner Docker volume (SC-2, SC-3) | FAILED (BLOCKER) | `ln -sfn` on line 144 of main.tf does NOT replace a pre-existing real `~/.claude` directory — it nests the symlink inside it. No `rm -rf` guard or `-L` check appears anywhere in the file. This silently bypasses the shared volume on any workspace with a persistent home volume that already holds a real `~/.claude` (upgrade path, prior template, any prior interactive `claude` run). The portability guarantee fails with no error signal. CR-01 from the code review is confirmed unaddressed. |
-| 2 | Owner's global settings, personal skills, and user-scoped MCP servers carry into a newly created workspace with no manual copy step (SC-3) | FAILED (BLOCKER) | Same root cause as Truth 1 — the symlink for `~/.claude` may not be established on workspaces with a pre-existing home volume. Additionally, `ln -sf` for `~/.claude.json` silently discards any pre-existing real file content (WR-01), creating an inconsistent state where `~/.claude` stays local and `~/.claude.json` points to the shared `{}` placeholder. |
-| 3 | A different owner's workspaces are isolated — their Claude config volume is distinct (SC-4) | VERIFIED | Volume named `coder-${data.coder_workspace_owner.me.id}-claude` (owner UUID keying confirmed at main.tf line 224). Each owner gets a distinct volume. `prevent_destroy = true` and `ignore_changes = [name]` confirmed (lines 231-233). No cross-owner mount possible by construction. |
-| 4 | README contains an operator runbook covering first-run login, what is shared, and the concurrent-workspace write caveat (SC-5) | VERIFIED | `### Claude Code` heading at README.md line 400, inside `## Workspace Template` (line 294) after `### Home directory persistence` (line 394). Covers: first-run OAuth login, four shared items (auth/settings/skills/MCP servers), empty-volume seeding with `coder-<owner-uuid>-claude` volume name, `> **Note:**` blockquote for concurrent-write caveat with file locking explanation, and `docker volume ls -f label=coder.purpose=claude-config` + `docker volume rm` cleanup commands. Note: contains WR-03 wording issue ("not data-unsafe" comment at line 444 understates blast radius — see Human Verification). |
-| 5 | Per-owner volume infrastructure (SC-2 prerequisite): volume declared with correct name, lifecycle, and isolation properties | VERIFIED | `docker_volume.claude_config_volume` present with exact name expression `coder-${data.coder_workspace_owner.me.id}-claude`, `prevent_destroy = true`, `ignore_changes = [name]`, `coder.purpose = "claude-config"` label, no `count` argument. Mount declared at `/home/coder/.claude-shared` after the `/home/coder` home-volume mount (correct parent-before-child ordering). `claude-code` module wired at v5.2.0, `order = 3`, `install_claude_code = true`, `anthropic_api_key = var.anthropic_api_key`, `count = data.coder_workspace.me.start_count`. `[REUSABLE]` and `[END REUSABLE]` markers present. |
+| 1 | On a workspace whose persistent home volume already holds a real `~/.claude` directory (upgrade-from-prior-template path), the startup_script removes/migrates that real directory so `~/.claude` ends up as a symlink pointing into the shared per-owner volume — the symlink is NOT nested inside a surviving real directory (CR-01) | VERIFIED | `main.tf` line 147: `if [ ! -L "$HOME/.claude" ] && [ -e "$HOME/.claude" ]; then` guards the rm. Line 148-149: `cp -an "$HOME/.claude/." "$CLAUDE_SHARED/dot-claude/" 2>/dev/null \|\| [ -z "$(ls -A "$HOME/.claude" 2>/dev/null)" ]` — rm only fires if copy succeeds or source is empty. Line 150: `rm -rf "$HOME/.claude"` runs only inside the conditional. Line 156: `ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"` runs AFTER the guard at a now-clear path. Commits 5a63ada (conditional rm) and 71d4256 (guard insertion). |
+| 2 | On a workspace whose home volume already holds a real `~/.claude.json` file, the startup_script preserves that file's content into the shared dot-claude.json BEFORE the {} placeholder can shadow it — first-time-migration auth/config is not silently discarded (WR-01/CR-01) | VERIFIED | `main.tf` line 164-167: migration guard `if [ ! -L "$HOME/.claude.json" ] && [ -f "$HOME/.claude.json" ]; then cp -f "$HOME/.claude.json" "$CLAUDE_SHARED/dot-claude.json"; rm -f "$HOME/.claude.json"; fi` runs at line 164. The `{}` placeholder guard `if [ ! -f "$CLAUDE_SHARED/dot-claude.json" ]; then echo '{}' > ...; fi` runs AFTER at line 172. Order: migrate (164) → placeholder-as-last-resort (172) → symlink (177). The critical fix: `cp -f` (force-overwrite) prevents the previous bug where `cp -n` (no-clobber) silently skipped once placeholder existed. Commit 6a21803. |
+| 3 | Re-running the startup_script on every subsequent start stays idempotent: once `~/.claude` and `~/.claude.json` are symlinks, the `[ ! -L ]` guards are no-ops with no repeated migration and no data loss | VERIFIED | Both guards are gated on `! -L` (not a symlink). Once symlinks are established, `! -L` is false for both paths; neither guard body executes. The `ln -sfn` and `ln -sf` commands are themselves idempotent (update-in-place for existing symlinks). `set -e` is active but all paths within the guards are safe; the chown non-fatal guard (commit 0ddef8a, line 134-135) prevents startup_script abort if chown fails. |
+| 4 | The README volume-cleanup comment no longer claims deletion is "not data-unsafe"; it warns that deleting the volume permanently destroys the owner's auth, settings, personal skills, and MCP config (WR-03 prose) | VERIFIED | `README.md` line 444: `# Remove a specific orphaned volume. WARNING: permanently deletes auth, settings, skills, and MCP config for that owner.` Confirmed: `grep -c 'not data-unsafe' README.md` returns 0. "permanently", "WARNING", "skills", "MCP config" all present on line 444. Commit ca38655. |
+| 5 | Per-owner volume infrastructure: volume declared with correct name, lifecycle, and isolation properties; symlinks wired into shared volume; `[REUSABLE]` drop-in block documented | VERIFIED | `docker_volume.claude_config_volume` at line 253: name `coder-${data.coder_workspace_owner.me.id}-claude` (owner UUID keying), `prevent_destroy = true`, `ignore_changes = [name]`, `coder.purpose = "claude-config"` label. Volume mounted at `/home/coder/.claude-shared` (line 357) after home volume (line 347-350) — correct parent-before-child ordering. `module "claude-code"` at line 417: v5.2.0, `install_claude_code = true`, `anthropic_api_key = var.anthropic_api_key`, `count = data.coder_workspace.me.start_count`. `[REUSABLE]` marker at line 49, `[END REUSABLE]` at line 427. |
 
-**Score: 3/5 truths verified** (Truths 1 and 2 are the same root-cause blocker; counted as one structural gap affecting two SCs)
+**Score: 5/5 truths verified**
 
 ### Deferred Items
 
-None. All five success criteria are within scope of this phase.
+None. All five success criteria are within scope of this phase and are now verified by code inspection.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `templates/docker/main.tf` | anthropic_api_key variable, claude_config_volume resource, .claude-shared mount, startup_script symlink block, claude-code module, [REUSABLE] block | STUB (partial) | All structural elements exist and are wired. The startup_script Claude block is substantively implemented but contains a defect that defeats the core portability goal for the upgrade path (pre-existing `~/.claude` directory not removed before `ln -sfn`). |
-| `README.md` | `### Claude Code` operator runbook subsection | VERIFIED | Section exists at line 400 with all required content. One prose accuracy issue (WR-03) flagged for human review. |
+| `templates/docker/main.tf` | CR-01/WR-01 guards before ln commands; placeholder as last resort; chown non-fatal; per-owner volume; claude-code module; [REUSABLE] block | VERIFIED | All elements present. Guard A (line 147-153) before `ln -sfn` (line 156). Guard B with `cp -f` (line 164-167) before placeholder (line 172-174) before `ln -sf` (line 177). Chown non-fatal (line 134-135). Volume resource (line 253-277). Module (line 417-425). REUSABLE markers (lines 49, 427). |
+| `README.md` | `### Claude Code` operator runbook with first-run login, what is shared, seeding behavior, concurrent-write caveat, and accurate cleanup warning | VERIFIED | Section at line 400. First-run login at line 406-410. Four shared items at lines 415-418. Seeding/volume name at lines 425-429. Concurrent-write `> Note:` blockquote at lines 431-433. Cleanup with `WARNING: permanently...` at line 444. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `docker_container.workspace volumes{}` | `docker_volume.claude_config_volume` | `volume_name = docker_volume.claude_config_volume.name` | WIRED | Line 328 confirmed |
-| `module.claude-code` | `variable.anthropic_api_key` | `anthropic_api_key = var.anthropic_api_key` | WIRED | Line 392 confirmed |
-| `coder_agent.main.startup_script` | `/home/coder/.claude-shared` | symlinks `~/.claude` and `~/.claude.json` into the shared volume | PARTIAL | The link code exists and runs. It works correctly for empty/new home volumes. It silently fails for home volumes with a pre-existing real `~/.claude` directory (CR-01). |
-| `README.md Claude Code subsection` | `templates/docker/main.tf claude_config_volume` | references `coder-<owner-uuid>-claude` and discovery label | WIRED | `label=coder.purpose=claude-config` confirmed at README.md line 442; volume name expression matches |
+| `startup_script` dir guard (line 147) | `ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"` (line 156) | `[ ! -L ] && [ -e ]` gate; conditional rm-after-copy at 148-152 | WIRED | Guard at 147 < ln-sfn at 156; correct ordering confirmed |
+| `startup_script` json migration (line 164) | `ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"` (line 177) | `cp -f` migration at 165, rm at 166, placeholder at 172-174 | WIRED | Migration (164) < placeholder (172) < ln-sf (177); correct ordering confirmed |
+| `docker_container.workspace volumes{}` | `docker_volume.claude_config_volume` | `volume_name = docker_volume.claude_config_volume.name` at line 358 | WIRED | Confirmed at line 357-358 |
+| `module.claude-code` | `variable.anthropic_api_key` | `anthropic_api_key = var.anthropic_api_key` | WIRED | Line 422 confirmed |
+| `README.md Claude Code subsection` | `templates/docker/main.tf claude_config_volume` | references `coder-<owner-uuid>-claude` and `label=coder.purpose=claude-config` | WIRED | Lines 442-444 confirmed |
 
 ### Data-Flow Trace (Level 4)
 
-Not applicable — this phase produces infrastructure configuration (Terraform), not a component that renders dynamic data. The relevant data-flow is at runtime (Docker volume → symlink → Claude CLI reads credentials), which requires a live environment to verify (see Human Verification section).
+Not applicable — this phase produces infrastructure configuration (Terraform HCL and shell), not a component that renders dynamic data. The runtime data-flow (Docker volume → symlink → Claude CLI reads/writes credentials) requires a live environment and is covered by human verification items.
 
 ### Behavioral Spot-Checks
 
-Step 7b: SKIPPED — no runnable entry points. The artifacts are Terraform HCL; no binary or service can be exercised statically. Runtime behavior requires a live Coder server and Docker host (deferred to Human Verification).
+Step 7b: SKIPPED — no runnable entry points. The artifacts are Terraform HCL and shell heredocs; no binary, service, or test suite can be exercised statically. Runtime behavior requires a live Coder server and Docker host (deferred to human verification items above).
 
 ### Probe Execution
 
-Step 7c: No probe scripts declared or found. `find scripts -path '*/tests/probe-*.sh'` produced no results.
+Step 7c: No probe scripts declared or found. `find scripts -path '*/tests/probe-*.sh'` produced no results for this phase.
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|-------------|-------------|--------|---------|
-| CLAUDE-01 | 04-01-PLAN.md | Claude Code installed via `coder/claude-code` module v5.2.0 | SATISFIED | `module "claude-code"` at main.tf line 387 with `source = "registry.coder.com/coder/claude-code/coder"`, `version = "5.2.0"`, `install_claude_code = true` |
-| CLAUDE-02 | 04-01-PLAN.md | Per-owner Docker volume (UUID-keyed, rename-safe, destroy-protected) | SATISFIED | `docker_volume.claude_config_volume` with owner UUID name, `prevent_destroy = true`, `ignore_changes = [name]` |
-| CLAUDE-03 | 04-01-PLAN.md | Full Claude config surface (`~/.claude/` + `~/.claude.json`) on shared volume | PARTIAL | The mechanism is implemented (neutral mount + symlinks). Defective for home volumes with a pre-existing real `~/.claude` directory — the symlink nests inside rather than replacing. Works correctly only for new/empty home volumes. |
-| CLAUDE-04 | 04-01-PLAN.md | Shared volume writable by `coder` user (ownership resolved in startup_script) | SATISFIED | `stat`-guarded `chown -R coder:coder "$CLAUDE_SHARED"` at lines 130-132. Note: WR-02 (unguarded `stat` if mount absent) is an edge-case robustness issue, not a correctness blocker for the primary path. |
-| CLAUDE-05 | 04-01-PLAN.md | First-run login works on empty volume; no API key required by default | SATISFIED | `anthropic_api_key` defaults to `""` (line 86); OAuth is the default path. For a genuinely empty home volume this works correctly. |
-| CLAUDE-06 | 04-01-PLAN.md | Reusable drop-in snippet documented in-file | SATISFIED | `[REUSABLE]` at line 49, `[END REUSABLE]` at line 397. Spans variable + volume resource + module with WHAT/HOW TO USE/OPERATOR NOTES/MOUNT LAYOUT sections. |
-| CLAUDE-07 | 04-02-PLAN.md | README operator runbook covering first-run, what is shared, seeding, concurrent-write caveat | SATISFIED | `### Claude Code` at README.md line 400 covers all four required topics plus cleanup. Minor WR-03 prose accuracy issue (human review item). |
+| CLAUDE-01 | 04-01-PLAN.md | Claude Code installed via `coder/claude-code` module v5.2.0 | SATISFIED | `module "claude-code"` at main.tf line 417 with `source = "registry.coder.com/coder/claude-code/coder"`, `version = "5.2.0"`, `install_claude_code = true` |
+| CLAUDE-02 | 04-01-PLAN.md | Per-owner Docker volume (UUID-keyed, rename-safe, destroy-protected) | SATISFIED | `docker_volume.claude_config_volume` (line 253): `name = "coder-${data.coder_workspace_owner.me.id}-claude"`, `prevent_destroy = true`, `ignore_changes = [name]` |
+| CLAUDE-03 | 04-01-PLAN.md / 04-03-PLAN.md | Full Claude config surface (`~/.claude/` + `~/.claude.json`) reliably migrated to and accessible from the shared volume, including the upgrade path | SATISFIED | Guards at lines 147-153 and 164-167 handle pre-existing real paths. `cp -f` ordering (6a21803) ensures real content is preserved before placeholder. `cp -an` + conditional rm (5a63ada) ensures directory is only removed after successful copy. Both paths end with the shared-volume symlinks established. |
+| CLAUDE-04 | 04-01-PLAN.md / 04-03-PLAN.md | Shared volume writable by `coder` user; startup_script steps idempotent and safe to re-run | SATISFIED | `stat`-guarded `chown -R coder:coder "$CLAUDE_SHARED"` with non-fatal `\|\| echo "WARN..."` at lines 133-136 (commit 0ddef8a). Both `[ ! -L ]` guards are no-ops once symlinks exist. |
+| CLAUDE-05 | 04-01-PLAN.md | First-run login works on empty volume; no API key required by default | SATISFIED | `anthropic_api_key` defaults to `""` (line 82-85); OAuth is the default path. On an empty home volume, both guards skip (no pre-existing paths), `dot-claude/` is mkdir'd, `{}` placeholder is created, symlinks established — Claude CLI finds a clean shared config location. |
+| CLAUDE-06 | 04-01-PLAN.md | Reusable drop-in snippet documented in-file | SATISFIED | `[REUSABLE]` at line 49, `[END REUSABLE]` at line 427. Spans `anthropic_api_key` variable, `docker_volume.claude_config_volume`, mount in container resource, startup_script Claude block, and `module "claude-code"` with WHAT/HOW TO USE/OPERATOR NOTES/MOUNT LAYOUT sections. |
+| CLAUDE-07 | 04-02-PLAN.md / 04-03-PLAN.md | README operator runbook covering first-run, what is shared, seeding, concurrent-write caveat, and accurate cleanup blast-radius warning | SATISFIED | `### Claude Code` at README.md line 400. All four required topics present. Cleanup comment at line 444 now reads `WARNING: permanently deletes auth, settings, skills, and MCP config for that owner.` — "not data-unsafe" removed (commit ca38655). |
 
 **All 7 requirement IDs (CLAUDE-01 through CLAUDE-07) are accounted for. No orphaned requirements.**
 
@@ -100,60 +105,64 @@ Step 7c: No probe scripts declared or found. `find scripts -path '*/tests/probe-
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `templates/docker/main.tf` | 144 | `ln -sfn` without pre-existing-directory guard | BLOCKER | On any home volume that already holds a real `~/.claude` directory, `ln -sfn` nests the symlink inside the directory instead of replacing it. `~/.claude` stays a real directory pointing at local home-volume storage, not the shared per-owner volume. The portability guarantee (SC-1/2/3) silently fails. This is the CR-01 finding from the code review, confirmed independently. |
-| `templates/docker/main.tf` | 147 | `ln -sf` without content-preservation guard for existing real file | WARNING | On any home volume that already holds a real `~/.claude.json` file, `ln -sf` silently overwrites it with a symlink to the `{}` placeholder, discarding the existing content. Combines with the CR-01 failure to produce inconsistent state: `~/.claude` stays local, `~/.claude.json` flips to shared `{}`. This is the WR-01 finding. |
-| `README.md` | 444 | "not data-unsafe" inline comment overstates safety of `docker volume rm` | WARNING | Deleting the volume destroys personal skills and MCP configuration permanently, not merely forces a re-login. Misleading to operators. This is the WR-03 finding. |
+| `templates/docker/main.tf` | 148-149 | `cp -an ... 2>/dev/null \|\| [ -z "$(ls -A ...)" ]` — stderr suppressed on cp | INFO | Intentional design: `2>/dev/null` prevents noise on empty source directories while `\|\| [ -z "$(ls -A ...)" ]` separates "empty source is OK" from "copy failure on non-empty source". The else branch (line 152) documents leaving the original in place on genuine failure. This is not a stub — it is a deliberate error-handling pattern from the WR-01 fix (commit 5a63ada). |
 
-No `TBD`, `FIXME`, or `XXX` markers found in either modified file.
+No `TBD`, `FIXME`, or `XXX` markers found in modified files. No stub patterns. No hardcoded empty data flowing to user-visible output.
+
+**Note on SUMMARY vs. live code discrepancy:** The 04-03-SUMMARY.md describes Guard B as using `cp -n` (no-clobber), but the live code uses `cp -f` (force-overwrite). This is not a regression — it is expected. The REVIEW-FIX commits (6a21803) were applied after the 04-03 SUMMARY was written. The SUMMARY documented the initial gap-closure attempt; the REVIEW correctly identified that `cp -n` was still wrong (it is the no-clobber primitive that cannot report a skip, the original bug), and commit 6a21803 upgraded it to `cp -f`. The live code is correct and supersedes the SUMMARY narrative.
 
 ### Human Verification Required
 
-#### 1. README WR-03 Wording
-
-**Test:** Read README.md line 444. The inline code comment states `# Remove a specific orphaned volume (deletion forces re-login for that owner — not data-unsafe)`.
-**Expected:** The comment should warn that deletion permanently destroys the owner's Claude auth, settings, personal skills, and MCP config — not merely forces a re-login. Suggested rewording: `# Remove a specific orphaned volume. WARNING: permanently deletes auth, settings, skills, and MCP config for that owner.`
-**Why human:** Prose accuracy judgment. The wording is factually misleading (WR-03) but not a programmatic blocker — it requires a human editor decision on rewording.
-
-#### 2. Live Authentication Smoke Test
+#### 1. Live Authentication Smoke Test (SC-1, SC-2, SC-3)
 
 **Test:** Create workspace A for owner X on the updated template. Open a terminal and run `claude`. Complete the interactive OAuth/subscription login. Stop workspace A. Create workspace B for the same owner X. Open a terminal in B and run `claude`.
-**Expected:** `claude` starts already authenticated in workspace B — no login prompt. This confirms SC-1, SC-2, SC-3 for fresh home volumes.
-**Why human:** Requires a running Coder server + Docker host.
+**Expected:** `claude` starts already authenticated in workspace B — no login prompt. Credentials from the per-owner volume are present transparently.
+**Why human:** Requires a running Coder server and Docker host. Cannot be automated statically.
 
-#### 3. Upgrade-Path Test (CR-01 Risk Surface)
+#### 2. Upgrade-Path Smoke Test — Directory Guard (CR-01 Fix Validation)
 
-**Test:** Take a workspace whose home volume already contains a real `~/.claude` directory (created under a prior template version or by running `claude` manually before this phase applied). Apply the new template, restart the workspace. Run `ls -la ~/.claude` in the workspace terminal.
-**Expected (if CR-01 is fixed):** `~/.claude` is a symlink: `.claude -> .claude-shared/dot-claude`.
-**Expected (current code — will FAIL):** `~/.claude` is a real directory, and inside it is `dot-claude -> .claude-shared/dot-claude`. The shared volume is silently bypassed.
-**Why human:** Requires a workspace with a pre-existing real `~/.claude` on its persistent home volume.
+**Test:** Take a workspace whose persistent home volume already contains a real `~/.claude` directory (pre-phase-04 workspace, or any workspace where `claude` was run before this template applied). Apply the updated template, restart the workspace. Run `ls -la ~/.claude` in the workspace terminal.
+**Expected:** `~/.claude` is a symlink: `.claude -> .claude-shared/dot-claude`. The path is NOT a real directory, and there is no nested `dot-claude` symlink inside a surviving real directory.
+**Why human:** Requires a workspace with a pre-existing real `~/.claude` directory on its persistent home volume. Code inspection confirms the guard logic is correct; live execution in an upgrade scenario confirms no runtime edge case.
 
-#### 4. Owner Isolation Test
+#### 3. Content-Preservation Smoke Test — JSON Guard (WR-01 Fix Validation)
+
+**Test:** Take a workspace whose home volume contains a real `~/.claude.json` with real auth data. Apply the updated template, restart the workspace. Run `cat ~/.claude.json` and check the shared volume's `dot-claude.json`.
+**Expected:** The real auth content is preserved in the shared `dot-claude.json`. `~/.claude.json` is a symlink. The `{}` placeholder was NOT substituted for the real auth data.
+**Why human:** Requires a workspace with a pre-existing real `~/.claude.json` containing auth material. The `cp -f` ordering fix is verified by code inspection; live execution confirms the fix under real conditions.
+
+#### 4. Idempotency Test
+
+**Test:** Stop and start the same workspace twice after the symlinks are established. Observe no errors in the startup log and run `ls -la ~/.claude ~/.claude.json` to confirm both remain symlinks.
+**Expected:** The `[ ! -L ]` guards fire as no-ops on the second and subsequent starts. No repeated migration, no errors, `~/.claude` and `~/.claude.json` remain symlinks.
+**Why human:** Requires a running workspace. Static analysis confirms the guard condition (`! -L`) is a no-op once symlinks exist; runtime confirmation is best practice.
+
+#### 5. Owner Isolation Test (SC-4)
 
 **Test:** Create workspaces for two different Coder owners X and Y. Run `docker volume ls -f label=coder.purpose=claude-config` on the Docker host. Authenticate as X in X's workspace. Open Y's workspace and run `claude`.
 **Expected:** Two distinct volumes with different UUID segments in their names. Y's workspace has no access to X's credentials and starts unauthenticated.
 **Why human:** Requires a running Coder server with two distinct owner accounts.
 
-### Gaps Summary
+### Re-Verification Summary
 
-**One structural blocker (CR-01), confirmed independently of the code review:**
+**Previous status:** `gaps_found` (4/5 must-haves, one structural BLOCKER: CR-01 — ln -sfn nesting symlink inside surviving real directory; WR-01 — cp -n preceded by placeholder creation silently discarded real .claude.json auth data)
 
-The startup_script uses `ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"` to establish the symlink. The `-sfn` flag behaves correctly when `$HOME/.claude` does not exist or is already a symlink — it creates or updates the symlink atomically. However, when `$HOME/.claude` already exists as a real directory (the persistent home volume carries it from a prior workspace start or prior template), `-sfn` does NOT remove the directory. Instead, it creates a new symlink named `dot-claude` inside the existing real directory. The result: `~/.claude` remains a real directory backed by the home volume, not the shared per-owner volume. Claude reads and writes to the non-shared path. The authentication state, settings, skills, and MCP config go to the workspace-local home volume, not the shared volume. The portability guarantee fails invisibly.
+**Gaps closed in this re-verification:**
 
-This is not a hypothetical edge case. It is the expected upgrade path: any workspace that was running before this template was pushed will have a real `~/.claude` in its persistent home volume. The very first time the updated template provisions the container, the startup_script runs and silently bypasses the shared volume.
+1. **CR-01 (BLOCKER — directory):** `main.tf` lines 147-153 now have a proper `[ ! -L ] && [ -e ]` guard with migrate-then-conditional-rm before `ln -sfn`. The `rm -rf` is inside a conditional that only fires when the `cp -an` succeeded OR the source was empty — addressing the WR-01 (REVIEW) masked-copy-failure risk simultaneously. Commits 71d4256 + 5a63ada.
 
-The fix is two or three lines:
-```sh
-if [ ! -L "$HOME/.claude" ]; then
-  rm -rf "$HOME/.claude"  # or: cp -an "$HOME/.claude/." "$CLAUDE_SHARED/dot-claude/" 2>/dev/null || true && rm -rf "$HOME/.claude"
-fi
-ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"
-```
+2. **CR-01 (BLOCKER — json/ordering):** `main.tf` lines 164-177 now run migration (`cp -f`) FIRST, placeholder-as-last-resort SECOND, symlink THIRD. The `cp -f` ensures a real file force-overwrites any placeholder already in the shared volume. Commit 6a21803.
 
-A parallel fix is needed for `~/.claude.json` (WR-01).
+3. **WR-03 (chown non-fatal):** `main.tf` line 134-135: `sudo chown ... || echo "WARN: ..."`. Commit 0ddef8a.
 
-Until this is resolved, SC-1, SC-2, and SC-3 are conditionally met only for home volumes that have never held a real `~/.claude` (i.e., brand-new workspaces on a fresh home volume with no prior Claude use). The core phase goal — portability "including newly created ones" — is partially met but the upgrade-from-prior-template path is broken.
+4. **WR-03 (README prose):** `README.md` line 444: `WARNING: permanently deletes auth, settings, skills, and MCP config for that owner.` Commit ca38655.
+
+**All 5/5 must-haves from the gap-closure plan (04-03-PLAN.md) are verified by code inspection.** No regressions found against previously-passing truths (volume infrastructure, isolation, README structure).
+
+**Status:** `human_needed` — all automated checks pass. Live smoke tests (authentication, upgrade-path, content-preservation, idempotency, isolation) require a running Coder + Docker environment and cannot be verified statically.
 
 ---
 
-_Verified: 2026-06-17_
+_Verified: 2026-06-17T20:00:00Z_
 _Verifier: Claude (gsd-verifier)_
+_Re-verification: Yes — after CR-01/WR-01/WR-03 gap closure_

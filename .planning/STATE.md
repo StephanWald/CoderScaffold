@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Portable Claude Code Setup
-status: complete
-stopped_at: Completed 04-03-PLAN.md (gap closure: CR-01 symlink guard, WR-01 content preservation, WR-03 README blast-radius)
-last_updated: "2026-06-17T18:41:00Z"
-last_activity: 2026-06-17 -- Phase 04 gap closure complete (all 3 plans done)
+status: awaiting_human_verification
+stopped_at: Phase 04 re-verified after code-review BLOCKER fix — status human_needed (5/5 must-haves verified by code; 5 live-environment UAT items pending in 04-UAT.md)
+last_updated: "2026-06-17T20:05:00Z"
+last_activity: 2026-06-17 -- Phase 04 code-review found+fixed data-loss BLOCKER (CR-01); re-verification human_needed
 progress:
   total_phases: 1
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 3
   completed_plans: 3
-  percent: 100
+  percent: 95
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-17)
 
 ## Current Position
 
-Phase: 04 (portable-claude-config) — COMPLETE
-Plan: 3 of 3 (all plans done)
-Status: Phase 04 complete — all verification gaps closed
-Last activity: 2026-06-17 -- Phase 04 gap closure (04-03) complete
+Phase: 04 (portable-claude-config) — AWAITING HUMAN VERIFICATION
+Plan: 3 of 3 (all plans done; gap closure 04-03 done)
+Status: Re-verification human_needed — code-review BLOCKER (CR-01 ~/.claude.json data loss) found and fixed; 5/5 must-haves verified by code, 5 live-environment UAT items pending. Run /gsd-verify-work 04.
+Last activity: 2026-06-17 -- Phase 04 BLOCKER fix merged; re-verification human_needed
 
 ## Performance Metrics
 
