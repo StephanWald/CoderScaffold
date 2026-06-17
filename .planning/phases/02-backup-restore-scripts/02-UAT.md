@@ -1,5 +1,5 @@
 ---
-status: testing
+status: complete
 phase: 02-backup-restore-scripts
 source: [02-VERIFICATION.md]
 started: "2026-06-17"
@@ -8,28 +8,21 @@ updated: "2026-06-17"
 
 ## Current Test
 
-number: 1
-name: Full backup→restore round-trip on a host with Docker and the stack running
-expected: |
-  Backup produces a non-empty mode-600 custom-format dump and exits 0 (the SC-1
-  integrity-check blocker is now fixed via Plan 02-03 — confirm `Backup complete` prints
-  and the script exits 0); restoring it into a freshly-wiped DB exits 0, Coder restarts,
-  and the user/workspace created pre-backup are visible in the UI (SC-2).
-awaiting: user response
+[testing complete]
 
 ## Tests
 
 ### 1. Full backup→restore round-trip on a host with Docker and the stack running
 expected: Backup produces a non-empty mode-600 custom-format dump and exits 0; restoring it into a freshly-wiped DB exits 0, Coder restarts, and the user/workspace created pre-backup are visible in the UI (SC-2). Failure paths (missing dump arg/file, stack down) exit non-zero with a stderr message, and a pre-stop validation failure leaves `coder` running.
-result: pending
-note: "Prior blocker (integrity check exited 1 on every run) was diagnosed and fixed by gap-closure Plan 02-03 (commit 8b5be56 — `docker compose cp` seekable check). Re-run the round-trip against a live Docker stack to confirm SC-1 (exit 0 / 'Backup complete') and SC-2 (restore + UI visibility)."
+result: pass
+note: "Prior blocker (integrity check exited 1 on every run) was diagnosed and fixed by gap-closure Plan 02-03 (commit 8b5be56 — `docker compose cp` seekable check). User confirmed the live round-trip against a real Docker stack: backup exits 0 / 'Backup complete' (SC-1), restore exits 0, Coder restarts, and pre-backup user/workspace are visible in the UI (SC-2)."
 
 ## Summary
 
 total: 1
-passed: 0
+passed: 1
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
