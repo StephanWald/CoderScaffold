@@ -1,8 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "backup.sh integrity-check fails: 'ERROR: Dump file failed integrity check' on macOS against live stack — dump file is non-empty (passes zero-byte guard) but pg_restore --list /dev/stdin via docker compose exec -T fails. goal: find_root_cause_only."
 created: 2026-06-17T00:00:00Z
-updated: 2026-06-17T00:00:00Z
+updated: 2026-06-17T12:00:00Z
+resolution: "Fixed by gap-closure Plan 02-03 (commit 8b5be56) — integrity check now docker-compose-cps the dump into the container as a seekable file, lists it, and removes it on all paths. Re-verification scored 8/8 must-haves."
 ---
 
 ## Current Focus
