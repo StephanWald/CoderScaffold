@@ -195,7 +195,11 @@ resource "docker_container" "workspace" {
   # Replace localhost/127.0.0.1 with host.docker.internal so the workspace
   # agent can reach the Coder server when CODER_ACCESS_URL=http://127.0.0.1:7080.
   # Both entrypoint AND the host entry below are required together. (Pitfall 3)
-  entrypoint = ["sh", "-c", replace(coder_agent.main.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
+  entrypoint = ["sh", "-c", replace(
+    coder_agent.main.init_script,
+    "/(https?://)(localhost|127\\.0\\.0\\.1)/",
+    "$${1}host.docker.internal"
+  )]
   env        = ["CODER_AGENT_TOKEN=${coder_agent.main.token}"]
 
   # Add host.docker.internal → host-gateway so the workspace agent can reach
