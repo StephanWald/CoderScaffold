@@ -37,12 +37,14 @@ variable "docker_socket" {
   type        = string
 }
 
-# Workspace base image — pinned default, overridable (D-02).
+# Workspace BASE image — pinned default, overridable (D-02). Passed as the
+# BASE_IMAGE build arg to templates/docker/Dockerfile, which layers Node.js on
+# top. Override to build from a different base.
 # Pin to a specific digest for production reproducibility:
 #   codercom/enterprise-base:ubuntu@sha256:<digest>
 variable "workspace_image" {
   default     = "codercom/enterprise-base:ubuntu"
-  description = "Workspace container image. Override to use a custom image."
+  description = "Base image for the workspace (FROM in the in-template Dockerfile). Node.js is layered on top."
   type        = string
 }
 
@@ -296,13 +298,36 @@ resource "docker_volume" "claude_config_volume" {
   }
 }
 
-# ── Workspace base image ──────────────────────────────────────────────────────
+# ── Workspace image (built in-template) ───────────────────────────────────────
+#
+# Builds templates/docker/Dockerfile (base image + Node.js) using the host
+# Docker daemon via the provisioner. build.context = path.module — the pushed
+# template directory is the provisioner's working dir, so the Dockerfile and
+# build context resolve there.
 #
 # keep_locally = true — prevents the image from being removed when workspaces
-# stop. The image is pulled once and reused across workspace starts.
+# stop. Built once and reused; Docker layer cache makes subsequent builds fast
+# even though the tag is keyed per-workspace (the Node layer is identical and
+# cached across workspaces).
+#
+# triggers — force a rebuild when the Dockerfile changes (filesha1), so a base
+# bump or Node change is picked up on the next workspace build.
 
 resource "docker_image" "main" {
-  name         = var.workspace_image
+  name = "coder-${data.coder_workspace.me.id}-workspace"
+
+  build {
+    context    = path.module
+    dockerfile = "Dockerfile"
+    build_args = {
+      BASE_IMAGE = var.workspace_image
+    }
+  }
+
+  triggers = {
+    dockerfile_sha1 = filesha1("${path.module}/Dockerfile")
+  }
+
   keep_locally = true
 }
 
