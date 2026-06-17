@@ -75,7 +75,7 @@ Both tasks targeted the same `scripts/backup.sh` file and were committed atomica
 
 1. **Task 1 + Task 2: scripts/backup.sh** - `4e2dfdd` (feat)
 
-**Plan metadata commit:** (docs commit follows)
+**Plan metadata commit:** `9702710` (docs)
 
 ## Files Created/Modified
 
@@ -135,10 +135,12 @@ ls -l backups/coder-*.dump
 - Plan 02-02 (`scripts/restore.sh`) can immediately consume dumps from this script
 - No blockers for Plan 02-02
 
-## Self-Check
+## Self-Check: PASSED
 
-- [x] `scripts/backup.sh` exists: confirmed (created by Write tool)
+- [x] `scripts/backup.sh` exists: confirmed (created by Write tool, 111 lines, mode 755)
 - [x] Commit 4e2dfdd exists: confirmed by git log
+- [x] Commit 9702710 (docs) exists: confirmed by git log
+- [x] All acceptance criteria satisfied: bash -n passes, all mandated flags/patterns present, no --password, no docker-compose (hyphenated)
 
 ---
 *Phase: 02-backup-restore-scripts*
