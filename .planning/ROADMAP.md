@@ -54,7 +54,17 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A backup produced by `backup.sh` restores cleanly into a freshly initialized database via `scripts/restore.sh` — post-restore, the Coder server starts and existing workspaces and users are visible
   3. Both scripts return non-zero exit codes on failure, making them safe for use with external schedulers or backup tools (e.g. `set -e`, cron wrappers, monitoring scripts)
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — backup.sh: non-interactive, integrity-verified `pg_dump -Fc` to `./backups/` (chmod 600, exit codes) [Wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — restore.sh (stop/restore/start coder + EXIT trap, arg validation) + README backup/restore section + end-of-phase round-trip [Wave 2]
 
 ### Phase 3: Docker Workspace Template
 
@@ -81,5 +91,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Compose Hardening & Configuration | 2/2 | Complete | 2026-06-17 |
-| 2. Backup & Restore Scripts | 0/TBD | Not started | - |
+| 2. Backup & Restore Scripts | 0/2 | Not started | - |
 | 3. Docker Workspace Template | 0/TBD | Not started | - |
