@@ -396,3 +396,54 @@ to "Connected". Check:
 Workspace home directories (`/home/coder`) are stored in per-workspace Docker volumes and
 survive workspace stop/start cycles. Deleting a workspace deletes its home volume — all files
 under `/home/coder` are permanently removed when the workspace is deleted.
+
+### Claude Code
+
+Each Coder owner (developer) gets a dedicated per-owner Docker volume that carries their Claude
+Code credentials, settings, personal skills, and user-scoped MCP servers across every workspace
+they create — including new ones — with no manual copy step.
+
+**First-run login:** Open any workspace, open a terminal, and run `claude`. The CLI will prompt
+for an interactive OAuth/subscription login the first time. Complete that login once — no API key
+is required by default (the `anthropic_api_key` template variable defaults to empty so OAuth is
+the standard path). An operator who prefers API-key auth can set that variable at template push
+time, but it is optional.
+
+**What carries across workspaces:** After the first login, the following are stored on the
+per-owner volume and available in every subsequent workspace for that owner:
+
+- Auth credentials and session tokens
+- Global Claude settings (`.claude/settings.json`, etc.)
+- Personal skills (`.claude/` skill files)
+- User-scoped MCP servers (`.claude/` MCP config)
+
+All of the above live under `~/.claude/` and `~/.claude.json` on the workspace container.
+Internally, the startup script mounts the shared volume at the neutral path
+`/home/coder/.claude-shared` and symlinks `~/.claude` and `~/.claude.json` into it, so Claude
+reads and writes through to the shared volume transparently.
+
+**Empty-volume seeding:** The per-owner volume (`coder-<owner-uuid>-claude`) starts empty on
+first use. The workspace startup script initializes the directory structure, then the first
+`claude` login authenticates and writes credentials into it. Every subsequent workspace for the
+same owner starts already authenticated — no login needed. The volume name is keyed on the
+owner's immutable UUID (not the username) so a username rename never orphans it.
+
+> **Note:** Run `claude` in only one active workspace per owner at a time. `~/.claude.json` has
+> no file locking — concurrent writes from two simultaneously-running workspaces can corrupt
+> session state. Sequential use across workspaces is safe.
+
+**Volume cleanup (orphaned volumes):** Because the volume is created with `prevent_destroy = true`,
+deleting a Coder user or workspace never removes it automatically. Over time, deleted owners
+leave orphaned `coder-<owner-uuid>-claude` volumes on the Docker host. There is no cleanup
+script — this is a deliberate documented manual step. To find and remove orphaned volumes:
+
+```bash
+# Discover all Claude config volumes by label
+docker volume ls -f label=coder.purpose=claude-config
+
+# Remove a specific orphaned volume (deletion forces re-login for that owner — not data-unsafe)
+docker volume rm <volume-name>
+```
+
+The repo's own `.devcontainer/devcontainer.json` mounts only `~/.claude` and omits
+`~/.claude.json`; this template's symlink approach closes that gap for workspace containers.
