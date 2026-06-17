@@ -57,4 +57,4 @@ blocked: 0
   test: 1
   artifacts: ["templates/docker/main.tf"]
   missing: []
-  fix: "Removed `order = 3` from the claude-code module block (main.tf). Re-push required to deploy. Tests 1-5 blocked on a successful push + a workspace created from the deployed `docker` template."
+  fix: "Two invalid module arguments removed from main.tf: (1) `order = 3` on the claude-code module (v5.2.0 has no `order` input); (2) `agent_name = \"main\"` on the code-server module (v1.5.0 has no `agent_name` input — verified against the registry source; jetbrains-gateway v1.2.6 DOES accept agent_name, so it was left intact). Re-push required to deploy. Tests 1-5 blocked on a successful push + a workspace created from the deployed `docker` template."
