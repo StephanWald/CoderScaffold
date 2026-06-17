@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** — Phases 1–3 (shipped 2026-06-17) — see [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
-- ✅ **v1.1 Portable Claude Code Setup** — Phase 4 (shipped 2026-06-17)
+- 🚧 **v1.1 Portable Claude Code Setup** — Phase 4 (in progress — verification found gaps, gap closure required)
 
 ## Phases
 
@@ -20,7 +20,7 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 
 ### v1.1 Portable Claude Code Setup
 
-- [x] **Phase 4: Portable Claude Config** - Wire claude-code module + per-owner shared volume into the Docker template; ship operator runbook — completed 2026-06-17
+- [ ] **Phase 4: Portable Claude Config** - Wire claude-code module + per-owner shared volume into the Docker template; ship operator runbook — verification found gaps (CR-01), gap closure required
 
 ## Phase Details
 
@@ -55,4 +55,4 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 | 1. Compose Hardening & Configuration | v1.0 | 2/2 | Complete | 2026-06-17 |
 | 2. Backup & Restore Scripts | v1.0 | 3/3 | Complete | 2026-06-17 |
 | 3. Docker Workspace Template | v1.0 | 2/2 | Complete | 2026-06-17 |
-| 4. Portable Claude Config | v1.1 | 2/2 | Complete | 2026-06-17 |
+| 4. Portable Claude Config | v1.1 | 2/2 | Gaps Found | — |

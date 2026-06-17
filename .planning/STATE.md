@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Portable Claude Code Setup
-status: complete
-stopped_at: Completed 04-02-PLAN.md (README Claude Code operator runbook)
+status: in_progress
+stopped_at: Phase 04 verification found gaps (CR-01 symlink bug) — gap closure required
 last_updated: "2026-06-17T18:12:00Z"
-last_activity: 2026-06-17 -- Phase 04 fully complete
+last_activity: 2026-06-17 -- Phase 04 verified: gaps_found (3/5 must-haves)
 progress:
   total_phases: 1
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 2
   completed_plans: 2
-  percent: 100
+  percent: 0
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-17)
 
 **Core value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
-**Current focus:** Phase 04 — portable-claude-config
+**Current focus:** Phase 04 — portable-claude-config (gap closure)
 
 ## Current Position
 
-Phase: 04 (portable-claude-config) — COMPLETE
-Plan: 2 of 2 (all complete)
-Status: Phase complete; milestone v1.1 complete
-Last activity: 2026-06-17 -- Phase 04 plan 02 complete
+Phase: 04 (portable-claude-config) — VERIFICATION: GAPS FOUND
+Plan: 2 of 2 executed; gap-closure plan required
+Status: Verification failed (3/5 must-haves) — CR-01 `ln -sfn` does not replace a pre-existing real ~/.claude dir, bypassing the shared volume on re-provisioned workspaces. Run `/gsd-plan-phase 4 --gaps`.
+Last activity: 2026-06-17 -- Phase 04 verified: gaps_found
 
 ## Performance Metrics
 
