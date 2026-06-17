@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Portable Claude Code Setup
-status: in_progress
-stopped_at: Phase 04 verification found gaps (CR-01 symlink bug) — gap closure required
-last_updated: "2026-06-17T18:12:00Z"
-last_activity: 2026-06-17 -- Phase 04 verified: gaps_found (3/5 must-haves)
+status: complete
+stopped_at: Completed 04-03-PLAN.md (gap closure: CR-01 symlink guard, WR-01 content preservation, WR-03 README blast-radius)
+last_updated: "2026-06-17T18:41:00Z"
+last_activity: 2026-06-17 -- Phase 04 gap closure complete (all 3 plans done)
 progress:
   total_phases: 1
-  completed_phases: 0
-  total_plans: 2
-  completed_plans: 2
-  percent: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-17)
 
 **Core value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
-**Current focus:** Phase 04 — portable-claude-config (gap closure)
+**Current focus:** Phase 04 — portable-claude-config
 
 ## Current Position
 
-Phase: 04 (portable-claude-config) — VERIFICATION: GAPS FOUND
-Plan: 2 of 2 executed; gap-closure plan required
-Status: Verification failed (3/5 must-haves) — CR-01 `ln -sfn` does not replace a pre-existing real ~/.claude dir, bypassing the shared volume on re-provisioned workspaces. Run `/gsd-plan-phase 4 --gaps`.
-Last activity: 2026-06-17 -- Phase 04 verified: gaps_found
+Phase: 04 (portable-claude-config) — COMPLETE
+Plan: 3 of 3 (all plans done)
+Status: Phase 04 complete — all verification gaps closed
+Last activity: 2026-06-17 -- Phase 04 gap closure (04-03) complete
 
 ## Performance Metrics
 
@@ -59,8 +59,9 @@ Last activity: 2026-06-17 -- Phase 04 verified: gaps_found
 | Phase 02-backup-restore-scripts P02 | 2min | 3 tasks | 2 files |
 | Phase 03-docker-workspace-template P01 | 2min | 2 tasks | 1 files |
 | Phase 03 P02 | 1min | 1 tasks | 1 files |
-| Phase 04-portable-claude-config P01 | 28 | 3 tasks | 1 files |
+| Phase 04-portable-claude-config P01 | 28min | 3 tasks | 1 files |
 | Phase 04-portable-claude-config P02 | 1min | 1 tasks | 1 files |
+| Phase 04-portable-claude-config P03 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,9 @@ Recent decisions affecting current work:
 - [Phase 04-01]: claude_code_version intentionally unpinned — latest-on-start (D-06, deliberate exception to pin-everything ethos)
 - [Phase 04-01]: [REUSABLE] drop-in snippet shipped inline in main.tf — no separate example file (D-08)
 - [Phase 04-01]: terraform/tofu not in env — grep assertions served as authoritative validation gate for this plan
+- [Phase 04-03]: Guard A uses [ ! -L ] && [ -e ] (not just [ -d ]) to catch any non-symlink entity at ~/.claude — strictly safer for upgrade path
+- [Phase 04-03]: cp -an (archive + no-clobber) for directory migration — preserves timestamps, never overwrites existing shared content
+- [Phase 04-03]: WR-02 optional chown hardening skipped — wrapping the existing chown block would require restructuring 04-01 logic; plan explicitly permitted skipping it
 
 ### Pending Todos
 
@@ -114,11 +118,11 @@ None. All planned work for milestone v1.1 is complete.
 
 ## Session Continuity
 
-Last session: 2026-06-17T18:12:00Z
-Stopped at: Completed 04-02-PLAN.md (README Claude Code operator runbook)
+Last session: 2026-06-17T18:41:00Z
+Stopped at: Completed 04-03-PLAN.md (gap closure: CR-01, WR-01, WR-03 — all phase 04 gaps closed)
 Resume file: None
 
 ## Operator Next Steps
 
-Milestone v1.1 (Portable Claude Code Setup) is complete. All 2 plans executed.
-Next: push templates/docker to Coder server and validate live behavior.
+Milestone v1.1 (Portable Claude Code Setup) is COMPLETE. All 3 plans executed; all verification gaps (CR-01, WR-01, WR-03) closed.
+Next: push templates/docker to Coder server and validate live behavior (upgrade-path smoke test: workspace with real ~/.claude dir ends with symlink after template apply + restart).
