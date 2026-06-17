@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: "Phase 01 implementation complete (Plans 01-01 and 01-02 done). Ready for Phase 02: Backup & Restore Scripts."
-last_updated: "2026-06-17T06:28:39.907Z"
-last_activity: 2026-06-17 -- Phase 01 Plan 02 complete (.env.example + README.md operator runbook, checkpoint approved)
+status: executing
+stopped_at: "Plan 02-01 complete: scripts/backup.sh created. Ready for Plan 02-02: restore.sh"
+last_updated: "2026-06-17T07:06:17.644Z"
+last_activity: 2026-06-17 -- Phase 02 execution started
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 50
+  total_plans: 4
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-16)
 
 **Core value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
-**Current focus:** Phase 01 — compose-hardening-configuration (Plan 02: .env.example + README)
+**Current focus:** Phase 02 — backup-restore-scripts
 
 ## Current Position
 
-Phase: 01 (compose-hardening-configuration) — COMPLETE
-Plan: 2 of 2 (both plans complete)
-Status: Phase 01 implementation complete; Phase 1 deliverables: compose.yaml hardened, .env.example + README.md delivered
-Last activity: 2026-06-17 -- Phase 01 Plan 02 complete (.env.example + README.md operator runbook, checkpoint approved)
+Phase: 02 (backup-restore-scripts) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-06-17 -- Phase 02 execution started
 
 Progress: [##░░░░░░░░] 25%
 
@@ -55,6 +55,7 @@ Progress: [##░░░░░░░░] 25%
 
 | Phase 01-compose-hardening-configuration P01 | 90min | 2 tasks + 1 checkpoint | 2 files |
 | Phase 01-compose-hardening-configuration P02 | 45min | 2 tasks + 1 checkpoint | 2 files |
+| Phase 02-backup-restore-scripts P01 | 4min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - [Phase 01-01]: CODER_WILDCARD_ACCESS_URL defaults empty (wildcard apps disabled in quickstart; set in .env for production)
 - [Phase 01-02]: CODER_PG_DATA_DIR is commented opt-in in .env.example (not active) — prevents bind-mount crash-loop when operator copies .env.example to .env on macOS/Windows without editing the path
 - [Phase 01-02]: README quick-start uses named-volume path (no chown required by default); chown + failure symptom scoped to the "Optional: host bind mount" subsection
+- [Phase 02-backup-restore-scripts]: chmod 600 applied to dump file immediately after write (ASVS V4 — dump contains user/workspace data including tokens)
+- [Phase 02-backup-restore-scripts]: PGPASSWORD as inline env prefix on docker compose exec — limits variable lifetime to single exec call, not exported
+- [Phase 02-backup-restore-scripts]: Two-step dump verification: zero-byte size guard + pg_restore --list structural check (catches TTY corruption where pg_dump exits 0 but produces corrupt/empty output)
 
 ### Pending Todos
 
@@ -91,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-17T00:00:00.000Z
-Stopped at: Phase 01 implementation complete (Plans 01-01 and 01-02 done). Ready for Phase 02: Backup & Restore Scripts.
+Last session: 2026-06-17T07:06:17.632Z
+Stopped at: Plan 02-01 complete: scripts/backup.sh created. Ready for Plan 02-02: restore.sh
 Resume file: .planning/phases/ (Phase 02 plans TBD — run /gsd:plan-phase 02 to generate plans)

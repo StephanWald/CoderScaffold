@@ -60,7 +60,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — backup.sh: non-interactive, integrity-verified `pg_dump -Fc` to `./backups/` (chmod 600, exit codes) [Wave 1]
+- [x] 02-01-PLAN.md — backup.sh: non-interactive, integrity-verified `pg_dump -Fc` to `./backups/` (chmod 600, exit codes) [Wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -91,5 +91,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Compose Hardening & Configuration | 2/2 | Complete | 2026-06-17 |
-| 2. Backup & Restore Scripts | 0/2 | Not started | - |
+| 2. Backup & Restore Scripts | 1/2 | In Progress|  |
 | 3. Docker Workspace Template | 0/TBD | Not started | - |
