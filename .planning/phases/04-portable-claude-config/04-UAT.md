@@ -19,7 +19,9 @@ awaiting: user response
 
 ### 1. Live authentication smoke test
 expected: Create workspace A for owner X. Run `claude`, complete OAuth/subscription login. Stop workspace A. Create workspace B for the same owner X. Run `claude` in B — it starts already authenticated, no login prompt.
-result: [pending]
+result: issue
+reported: "claude: command not found in workspace; root cause: `coder templates push` fails with 'Unsupported argument' on the claude-code module's `order = 3` (module v5.2.0 does not accept `order`). Template never deployed, so the workspace ran an older/starter template with no claude wiring (no ~/.claude-shared, no CLI)."
+severity: blocker
 
 ### 2. Upgrade-path directory guard test (CR-01 fix validation)
 expected: Take a workspace whose persistent home volume already contains a real `~/.claude` directory. Apply the new template, restart. `ls -la ~/.claude` shows a symlink `.claude -> .claude-shared/dot-claude` — NOT a real directory, and no nested `dot-claude` symlink inside a surviving real directory.
@@ -41,9 +43,18 @@ result: [pending]
 
 total: 5
 passed: 0
-issues: 0
-pending: 5
+issues: 1
+pending: 4
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+- truth: "Operator can `coder templates push` the Docker template so workspaces are provisioned with the claude-code module + per-owner volume wiring"
+  status: failed
+  reason: "User reported: `coder templates push` fails at `terraform plan` — 'Unsupported argument' on main.tf:424 `order = 3` in module \"claude-code\". The claude-code module v5.2.0 does not accept an `order` input (code-server/jetbrains-gateway modules do). Template never deployed; workspace had no ~/.claude-shared and no claude CLI."
+  severity: blocker
+  test: 1
+  artifacts: ["templates/docker/main.tf"]
+  missing: []
+  fix: "Removed `order = 3` from the claude-code module block (main.tf). Re-push required to deploy. Tests 1-5 blocked on a successful push + a workspace created from the deployed `docker` template."
