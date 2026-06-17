@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Portable Claude Code Setup
 status: planning
-last_updated: "2026-06-17T16:18:38.809Z"
+last_updated: "2026-06-17T00:00:00.000Z"
 last_activity: 2026-06-17
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-16)
+See: .planning/PROJECT.md (updated 2026-06-17)
 
 **Core value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
-**Current focus:** Phase 03 — docker-workspace-template
+**Current focus:** Phase 04 — portable-claude-config (roadmap complete, ready for planning)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 4 — Portable Claude Config
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-17 — Milestone v1.1 started
+Status: Roadmap created, awaiting phase planning
+Last activity: 2026-06-17 — Milestone v1.1 roadmap created
 
 ## Performance Metrics
 
@@ -82,10 +82,11 @@ Recent decisions affecting current work:
 - [Phase 02-backup-restore-scripts P02]: Argument validation (-f regular file + -s non-zero size) placed before sourcing .env and before any service stop — no destructive action on invalid input (ASVS V5, T-02-05)
 - [Phase 02-backup-restore-scripts P02]: Restore reads dump via stdin redirect (< ${DUMP_FILE}), not as pg_restore filename arg — avoids docker/compose exec binary corruption pattern (#8909)
 - [Phase ?]: Display name / description / icon documented as post-push step via coder templates edit — not Terraform-managed (RESEARCH.md Pitfall 6)
+- [Phase 04 — pre-planning OPEN]: CLAUDE_CONFIG_DIR (env var, simpler) vs neutral-mount+symlinks (reliable, no undocumented behavior) — must be resolved empirically before coding; default recommendation is symlinks (Option B)
 
 ### Pending Todos
 
-None yet.
+- Resolve Open Decision before Phase 4 coding: validate CLAUDE_CONFIG_DIR empirically or commit to symlink approach — see research/SUMMARY.md "OPEN DECISION" section
 
 ### Blockers/Concerns
 
@@ -103,10 +104,10 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-17T14:19:33.099Z
-Stopped at: Completed Phase 03 Plan 02 (README ## Workspace Template section)
+Last session: 2026-06-17
+Stopped at: Milestone v1.1 roadmap created (Phase 4 defined)
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Run `/gsd-plan-phase 4` to create the Phase 4 execution plan

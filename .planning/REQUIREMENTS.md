@@ -58,19 +58,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLAUDE-01 | TBD | Pending |
-| CLAUDE-02 | TBD | Pending |
-| CLAUDE-03 | TBD | Pending |
-| CLAUDE-04 | TBD | Pending |
-| CLAUDE-05 | TBD | Pending |
-| CLAUDE-06 | TBD | Pending |
-| CLAUDE-07 | TBD | Pending |
+| CLAUDE-01 | Phase 4 | Pending |
+| CLAUDE-02 | Phase 4 | Pending |
+| CLAUDE-03 | Phase 4 | Pending |
+| CLAUDE-04 | Phase 4 | Pending |
+| CLAUDE-05 | Phase 4 | Pending |
+| CLAUDE-06 | Phase 4 | Pending |
+| CLAUDE-07 | Phase 4 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 7 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 7 ⚠️ (resolved when roadmap is created)
+- Mapped to phases: 7
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-17*
-*Last updated: 2026-06-17 after initial v1.1 definition*
+*Last updated: 2026-06-17 after roadmap creation*
