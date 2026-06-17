@@ -118,6 +118,33 @@ resource "coder_agent" "main" {
       cp -rT /etc/skel ~
       touch ~/.init_done
     fi
+
+    # ── Claude Code config (per-owner shared volume) ──────────────────────────
+    # The shared volume mounts at ~/.claude-shared (neutral path).
+    # Symlinks point ~/.claude and ~/.claude.json into it.
+    # All steps are idempotent — safe to re-run on every workspace start.
+    CLAUDE_SHARED="$HOME/.claude-shared"
+
+    # Fix ownership on first use (volume starts root-owned when empty).
+    # chown is scoped narrowly to $CLAUDE_SHARED only (T-04-02).
+    if [ "$(stat -c '%U' "$CLAUDE_SHARED")" != "coder" ]; then
+      sudo chown -R coder:coder "$CLAUDE_SHARED"
+    fi
+
+    # Create internal directory structure.
+    mkdir -p "$CLAUDE_SHARED/dot-claude"
+
+    # Initialize ~/.claude.json placeholder if missing (prevents claude from
+    # writing ~/.claude.json as a file before the symlink is in place).
+    if [ ! -f "$CLAUDE_SHARED/dot-claude.json" ]; then
+      echo '{}' > "$CLAUDE_SHARED/dot-claude.json"
+    fi
+
+    # Symlink ~/.claude → shared directory (-sfn: -n treats target as file if symlink).
+    ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"
+
+    # Symlink ~/.claude.json → shared file.
+    ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
   EOT
 
   env = {
@@ -290,6 +317,15 @@ resource "docker_container" "workspace" {
   volumes {
     container_path = "/home/coder"
     volume_name    = docker_volume.home_volume.name
+    read_only      = false
+  }
+
+  # Mount the per-owner Claude config volume at a neutral path (CLAUDE-02, D-04).
+  # Declared AFTER /home/coder so the parent mount is registered before the
+  # child mount — required for correct Linux mount-namespace shadowing (T-04-03).
+  volumes {
+    container_path = "/home/coder/.claude-shared"
+    volume_name    = docker_volume.claude_config_volume.name
     read_only      = false
   }
 
