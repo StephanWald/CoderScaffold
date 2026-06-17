@@ -1,217 +1,203 @@
 ---
 phase: 04-portable-claude-config
-reviewed: 2026-06-17T00:00:00Z
+reviewed: 2026-06-17T18:46:00Z
 depth: standard
-files_reviewed: 2
+files_reviewed: 1
 files_reviewed_list:
   - templates/docker/main.tf
-  - README.md
 findings:
   critical: 1
-  warning: 3
-  info: 3
+  warning: 4
+  info: 2
   total: 7
 status: issues_found
 ---
 
 # Phase 04: Code Review Report
 
-**Reviewed:** 2026-06-17
+**Reviewed:** 2026-06-17T18:46:00Z
 **Depth:** standard
-**Files Reviewed:** 2
+**Files Reviewed:** 1
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the two phase-04 changes: the portable Claude Code config additions to
-`templates/docker/main.tf` (anthropic_api_key variable, per-owner
-`claude_config_volume` with `prevent_destroy`, the `.claude-shared` mount, the
-startup_script symlink/seed block, and the `claude-code` v5.2.0 module) and the
-`### Claude Code` README operator runbook.
+Reviewed `templates/docker/main.tf` at standard depth, with adversarial focus on the
+gap-closure shell logic (CR-01 / WR-01) in `coder_agent.main.startup_script` — the
+migrate-then-symlink guards for `~/.claude` and `~/.claude.json`.
 
-The secret-handling (`sensitive = true`), volume lifecycle (`prevent_destroy` +
-`ignore_changes = [name]`), owner-UUID keying, mount-ordering, and Terraform
-heredoc escaping are all correct. No Terraform interpolation leaks into the shell
-block, and the `set -e` / `stat` guard does not mis-abort on a missing path.
+The Terraform interpolation-vs-shell escaping is clean (every `${...}` in the heredoc is a
+legitimate Terraform reference; the shell body uses `$VAR` / `$(...)` which Terraform passes
+through literally, and the unrelated metadata script on line 190 correctly double-escapes
+`$${HOME}`). Idempotency on re-run is also sound — the `[ ! -L ... ]` gates correctly turn
+both guards into no-ops once the symlinks exist, including for dangling symlinks.
 
-The dominant defect is in the symlink-seeding logic: `ln -sfn` does **not**
-replace a pre-existing real `~/.claude` **directory** — it creates a symlink
-*nested inside* it, silently leaving the shared volume unused for `~/.claude`.
-This breaks the core portability guarantee on any workspace whose persistent home
-volume already contains a real `~/.claude` (the exact upgrade/re-provision path
-this template is built to support). Secondary findings cover silent data loss on
-`~/.claude.json`, a stderr-noise path in the chown guard, and a README/behavior
-mismatch on what "data-unsafe" cleanup means.
+However, the headline WR-01 "content-preservation fix" **does not preserve content** and
+silently destroys real auth data on the exact upgrade path it was written to protect. This is
+a reproduced data-loss BLOCKER. A second data-loss path exists where a masked copy failure is
+followed by an unconditional `rm -rf`. Together these defeat the core portability goal of the
+phase. All findings below were validated by executing the shell sequences with the file's exact
+ordering.
 
 ## Critical Issues
 
-### CR-01: `ln -sfn` does not replace a pre-existing real `~/.claude` directory — shared volume silently bypassed
+### CR-01: WR-01 "content-preservation" guard silently discards real `~/.claude.json` auth on the upgrade path
 
-**File:** `templates/docker/main.tf:144`
+**File:** `templates/docker/main.tf:139-141, 155-158`
 **Issue:**
-The symlink seed runs:
+The placeholder guard (lines 139-141) **always creates** `$CLAUDE_SHARED/dot-claude.json`
+(`echo '{}' > ...`) *before* the WR-01 migration guard (lines 155-158) runs. By the time
+`cp -n "$HOME/.claude.json" "$CLAUDE_SHARED/dot-claude.json"` executes, the destination already
+exists, so `cp -n` (no-clobber) **silently skips the copy and still returns exit 0** (GNU
+coreutils behavior — verified). The very next line, `rm -f "$HOME/.claude.json"`, then deletes
+the developer's real `~/.claude.json`.
+
+Net effect on a workspace whose home volume already holds a real `~/.claude.json` (the exact
+"ran `claude` before this template" upgrade scenario WR-01 targets): the real auth/config is
+deleted and the shared file remains `{}`. **The fix preserves nothing.** Reproduced end-to-end:
+a `~/.claude.json` containing `{"oauth":"REAL_AUTH_TOKEN"}` results in shared `dot-claude.json`
+== `{}` after the sequence, and the original is gone.
+
+This is silent data loss of authentication material — must be fixed before ship.
+
+**Fix:** The migration must win over the placeholder. Either (a) move the migration guard
+*before* the `echo '{}'` placeholder, or (b) make the placeholder conditional on the migration
+not having supplied content, or (c) drop `-n` and copy when the existing shared file is just the
+placeholder. Simplest correct ordering — run migration first, placeholder only as a last resort:
+
 ```sh
-ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"
-```
-This is only correct when `$HOME/.claude` does not yet exist (or is already a
-symlink). If `$HOME/.claude` already exists as a **real directory**, `ln -sfn`
-does NOT replace it — it creates the link *inside* the directory at
-`$HOME/.claude/dot-claude`, and `$HOME/.claude` stays a real directory. Verified:
-
-```
-$ mkdir .claude; echo x > .claude/settings.json
-$ ln -sfn /shared/dot-claude .claude
-$ ls .claude
-dot-claude -> /shared/dot-claude   # nested symlink
-settings.json                       # original dir still real
-```
-
-`/home/coder` is a **persistent** volume that survives stop/start. So whenever a
-workspace's home volume already holds a real `~/.claude` directory, this block
-leaves `~/.claude` pointing at local home-volume storage, NOT the shared
-per-owner volume. Claude then reads/writes settings, skills, and MCP config to the
-non-shared path. The portability guarantee (CLAUDE-01/02/03 — "carries across
-every workspace … with no manual copy step") silently fails, and nothing in the
-script detects it.
-
-This is not hypothetical: it is the upgrade path. Any workspace created under the
-phase-03 template (or any earlier image where `claude`/code-server seeded
-`~/.claude`) carries a real `~/.claude` in its persistent home volume; pushing
-this template as an update hits the bug on the very next start. The chown guard
-will even report `coder` and skip, so there is no remediation signal.
-
-**Fix:** Replace the existing real path before symlinking, idempotently and only
-when it is not already the correct symlink:
-```sh
-# ~/.claude → shared dir. Remove a pre-existing real dir/file first; the
-# -L test ensures we never delete an already-correct symlink (idempotent).
-if [ ! -L "$HOME/.claude" ]; then
-  rm -rf "$HOME/.claude"
+# Migrate a pre-existing real ~/.claude.json into the shared volume FIRST,
+# before the placeholder can shadow it. Force-overwrite the (possibly-placeholder)
+# shared file with the real content.
+if [ ! -L "$HOME/.claude.json" ] && [ -f "$HOME/.claude.json" ]; then
+  cp -f "$HOME/.claude.json" "$CLAUDE_SHARED/dot-claude.json"
+  rm -f "$HOME/.claude.json"
 fi
-ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"
-```
-If preserving any pre-existing real `~/.claude` content matters on migration,
-seed it into the shared volume before removal:
-```sh
-if [ -d "$HOME/.claude" ] && [ ! -L "$HOME/.claude" ]; then
-  cp -an "$HOME/.claude/." "$CLAUDE_SHARED/dot-claude/" 2>/dev/null || true
-  rm -rf "$HOME/.claude"
+
+# Only create the {} placeholder if neither a real file nor a prior shared file exists.
+if [ ! -f "$CLAUDE_SHARED/dot-claude.json" ]; then
+  echo '{}' > "$CLAUDE_SHARED/dot-claude.json"
 fi
+
+ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
 ```
+
+Note: a naive `cp -n` can never work here as long as the placeholder runs first — the
+destination is guaranteed to exist. The overwrite must be intentional (`cp -f`), guarded by the
+`[ ! -L ] && [ -f ]` test which already proves the source is the developer's real file.
 
 ## Warnings
 
-### WR-01: `~/.claude.json` symlink silently discards a pre-existing real config file
+### WR-01: `~/.claude` directory migration: masked copy failure followed by unconditional `rm -rf` = data loss
 
-**File:** `templates/docker/main.tf:147`
+**File:** `templates/docker/main.tf:146-147`
 **Issue:**
+The migration copy `cp -an "$HOME/.claude/." "$CLAUDE_SHARED/dot-claude/" 2>/dev/null || true`
+deliberately swallows all errors (stderr hidden, `|| true`), and the next line
+`rm -rf "$HOME/.claude"` runs **unconditionally**. If the copy fails for any reason (shared
+volume full, permission/ownership problem on the mount, the dest path not being a directory due
+to a mount-shadowing race), the real `~/.claude` directory is deleted while nothing was
+preserved. Reproduced: forcing the copy to fail leaves the original deleted and the shared dest
+empty. The `|| true` exists to tolerate an empty source (so `set -e` doesn't abort), but it also
+masks genuine failures.
+
+**Fix:** Only delete the original if the copy actually succeeded. Separate "empty source is OK"
+from "copy failed":
+
 ```sh
-ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
-```
-Unlike the directory case, `ln -sf` on a pre-existing real **file** succeeds and
-replaces it with the symlink — but the original file content is silently
-discarded. On any home volume that already contains a real `~/.claude.json`
-(prior template version, prior interactive `claude` run), the operator's existing
-settings/session state are thrown away in favor of the `{}` placeholder, with no
-warning. Combined with CR-01 this produces an inconsistent state: `~/.claude.json`
-flips to shared (losing local data) while `~/.claude` stays local — the two
-diverge.
-**Fix:** Migrate before linking, guarding on `-L` for idempotency:
-```sh
-if [ -f "$HOME/.claude.json" ] && [ ! -L "$HOME/.claude.json" ]; then
-  # seed the shared file from the existing real file only if shared is still the placeholder
-  cp -n "$HOME/.claude.json" "$CLAUDE_SHARED/dot-claude.json" 2>/dev/null || true
-  rm -f "$HOME/.claude.json"
+if [ ! -L "$HOME/.claude" ] && [ -e "$HOME/.claude" ]; then
+  if cp -an "$HOME/.claude/." "$CLAUDE_SHARED/dot-claude/" 2>/dev/null \
+     || [ -z "$(ls -A "$HOME/.claude" 2>/dev/null)" ]; then
+    rm -rf "$HOME/.claude"
+  fi
+  # else: copy failed on a non-empty dir — leave original in place, do NOT rm.
 fi
-ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
 ```
 
-### WR-02: chown `stat` guard emits a stderr error and an empty comparison on first run if the mount is unexpectedly absent
+(At minimum, do not `rm -rf` when `cp` returned non-zero on a non-empty source.)
 
-**File:** `templates/docker/main.tf:130`
+### WR-02: `cp -n` for the JSON guard cannot report a clobber-skip — wrong tool for a "preserve" intent
+
+**File:** `templates/docker/main.tf:156`
 **Issue:**
+Even independent of the ordering bug in CR-01, `cp -n` is the wrong primitive for a
+content-preservation step: it returns exit 0 whether it copied or skipped, so the script can
+never tell whether the developer's content actually landed in the shared volume. There is no
+detection of, or recovery from, the silent-skip case. This is the underlying reason CR-01 is
+silent rather than loud.
+
+**Fix:** Make the migration intent explicit (overwrite a known-placeholder, or compare before
+copying) and verify the result, e.g. after `cp -f`, optionally assert the destination is no
+longer the literal `{}` placeholder before removing the source. See CR-01 fix.
+
+### WR-03: `set -e` + first-run `sudo chown` can abort the entire startup before symlinks are created
+
+**File:** `templates/docker/main.tf:115, 130-132`
+**Issue:**
+With `set -e` active, if the first-run ownership fix `sudo chown -R coder:coder "$CLAUDE_SHARED"`
+(line 131) returns non-zero — e.g. no passwordless sudo in a custom `workspace_image`, or a
+busy/locked file under the mount — the startup_script aborts immediately. Because this chown sits
+*before* the `mkdir`, migration guards, and `ln` commands, an abort here leaves `~/.claude` and
+`~/.claude.json` unconfigured (no symlinks), and the claude-code module then runs against a
+broken layout. The stat-based guard only narrows *when* chown runs; it does nothing to make the
+chown itself non-fatal.
+
+**Fix:** Make the ownership fix non-fatal and log instead of aborting:
+
 ```sh
 if [ "$(stat -c '%U' "$CLAUDE_SHARED")" != "coder" ]; then
-```
-If `$CLAUDE_SHARED` does not exist for any reason (mount not yet present, mount
-path typo, future refactor), `stat` writes `stat: cannot statx … No such file or
-directory` to stderr (surfaced in the agent startup log as a scary error) and the
-substitution yields an empty string, which is `!= "coder"`, so `chown -R` then
-runs against a nonexistent path and fails. Under `set -e`, the `chown` failure on
-line 131 (not inside a substitution) would abort the whole startup_script,
-blocking the skel/symlink steps that follow. The script never asserts the mount
-exists.
-**Fix:** Assert the mount up front (fail fast with a clear message) or guard the
-stat:
-```sh
-if [ ! -d "$CLAUDE_SHARED" ]; then
-  echo "ERROR: $CLAUDE_SHARED not mounted — claude_config_volume mount missing" >&2
-  exit 1
-fi
-if [ "$(stat -c '%U' "$CLAUDE_SHARED" 2>/dev/null)" != "coder" ]; then
-  sudo chown -R coder:coder "$CLAUDE_SHARED"
+  sudo chown -R coder:coder "$CLAUDE_SHARED" \
+    || echo "WARN: could not chown $CLAUDE_SHARED; continuing" >&2
 fi
 ```
 
-### WR-03: README claims volume deletion is "not data-unsafe" — but it destroys auth credentials and session tokens
+### WR-04: `stat` failure on a missing mount point yields an unconditional `chown -R` that aborts under `set -e`
 
-**File:** `README.md:444`
+**File:** `templates/docker/main.tf:130-131`
 **Issue:**
-```
-# Remove a specific orphaned volume (deletion forces re-login for that owner — not data-unsafe)
-```
-The per-owner volume stores, per the same README (lines 414-418) and the threat
-model, "Auth credentials and session tokens", global settings, **personal skills
-(`.claude/` skill files)**, and user-scoped MCP server config. Deleting it does
-not merely force a re-login — it permanently destroys any user-authored skills and
-MCP configuration that live only on that volume. Calling this "not data-unsafe"
-understates the blast radius and could lead an operator to delete a still-active
-owner's volume believing only a cheap re-login is at stake. The whole point of
-`prevent_destroy` is that this data is precious.
-**Fix:** Reword to reflect the real cost, e.g.:
-```
-# Remove a specific orphaned volume. WARNING: this permanently deletes that
-# owner's Claude auth, settings, personal skills, and MCP config. Only run on
-# volumes belonging to deleted owners.
+If `$CLAUDE_SHARED` does not exist (e.g. the second `volumes{}` block was omitted by an operator
+copying the [REUSABLE] block, or a mount failure), `stat -c '%U' "$CLAUDE_SHARED"` prints nothing
+to stdout (error to stderr). The condition `[ "" != "coder" ]` is then **true**, so
+`sudo chown -R coder:coder "$CLAUDE_SHARED"` runs against a nonexistent path, fails, and aborts
+the whole startup_script under `set -e`. This is a confusing failure mode for the documented
+"copy the [REUSABLE] block" workflow. Confirmed: the condition is taken when the path is absent.
+
+**Fix:** Gate the whole Claude block on the mount existing, per the plan's optional WR-02
+hardening (which was skipped):
+
+```sh
+if [ -d "$CLAUDE_SHARED" ]; then
+  # chown / mkdir / migration / symlink steps ...
+else
+  echo "WARN: $CLAUDE_SHARED not mounted; skipping Claude shared-config setup" >&2
+fi
 ```
 
 ## Info
 
-### IN-01: chown guard misses the case where the mount-point is `coder`-owned but inner files are root-owned
+### IN-01: `coalesce` on `full_name` assumes null-vs-empty-string semantics
 
-**File:** `templates/docker/main.tf:130-132`
-**Issue:** The guard checks ownership of `$CLAUDE_SHARED` only. If the top-level
-mount point is later `coder`-owned but a subtree entry (e.g. `dot-claude/`) is
-root-owned (a stray root write, a future seed step), the `-R` chown is skipped and
-`claude` may hit permission errors writing into the subtree.
-**Fix:** Either accept (low likelihood, documented elsewhere) or stat the
-concrete write target (`$CLAUDE_SHARED/dot-claude`) rather than the mount root.
+**File:** `templates/docker/main.tf:165, 167`
+**Issue:**
+`coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)` relies on
+`full_name` being `null` (not `""`) when unset for the fallback to engage. Coder commonly returns
+an **empty string** for an unset full name; `coalesce` skips only `null`, so `GIT_AUTHOR_NAME`
+could be set to `""` rather than falling back to `name`. Not a correctness blocker, but the
+fallback may not fire as intended.
+**Fix:** Use a length check, e.g.
+`data.coder_workspace_owner.me.full_name != "" ? ...full_name : ...name`, or `try`-based handling.
 
-### IN-02: `dot-claude.json` placeholder seeds `{}` but the script never ensures the symlink chain is valid before the module runs
+### IN-02: Redundant interpolation wrapping on email env values
 
-**File:** `templates/docker/main.tf:139-147`
-**Issue:** The flow assumes the agent startup_script always completes before the
-`claude-code` module's run-on-start scripts execute. That ordering holds today
-(agent init precedes module scripts), but it is an undocumented invariant the
-correctness depends on. If a future module gains an earlier hook, `claude` could
-write `~/.claude.json` as a real file before the symlink exists (the exact
-anti-pattern the placeholder is meant to prevent).
-**Fix:** Add a one-line comment at line 387 (`module "claude-code"`) noting it
-must run after the agent startup_script, so the invariant is explicit.
-
-### IN-03: README "What carries across workspaces" omits that a pre-existing real `~/.claude` will NOT carry (see CR-01)
-
-**File:** `README.md:412-429`
-**Issue:** The runbook presents portability as unconditional ("available in every
-subsequent workspace … no manual copy step"). Given CR-01, that is only true for
-home volumes that never held a real `~/.claude`. Until CR-01 is fixed the docs
-overpromise; after it is fixed (with migration), a one-line note on the
-upgrade-from-old-workspace behavior would still help operators.
-**Fix:** After CR-01 is resolved, add a sentence noting first-start migration of
-any pre-existing `~/.claude`/`~/.claude.json` into the shared volume.
+**File:** `templates/docker/main.tf:166, 168`
+**Issue:**
+`GIT_AUTHOR_EMAIL = "${data.coder_workspace_owner.me.email}"` wraps a single reference in a string
+template. It is harmless but inconsistent with the bare-reference style used two lines up for the
+`_NAME` values. Minor style/consistency nit.
+**Fix:** Drop the quotes/`${}`: `GIT_AUTHOR_EMAIL = data.coder_workspace_owner.me.email`.
 
 ---
 
-_Reviewed: 2026-06-17_
+_Reviewed: 2026-06-17T18:46:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
