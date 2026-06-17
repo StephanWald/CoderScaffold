@@ -69,10 +69,11 @@ variable "workspace_image" {
 #   - Concurrent writes: avoid running claude in two workspaces simultaneously
 #     for the same owner. ~/.claude.json is not write-safe under concurrent
 #     access (no file locking). Sequential use is safe.
-#   - Volume cleanup: `prevent_destroy = true` means Terraform never removes
-#     this volume. To fully remove it: `docker volume rm <name>` manually.
+#   - Volume cleanup: the volume is unmanaged (not a Terraform resource), so it
+#     persists across workspace deletion automatically. To fully remove it:
+#     `docker volume rm <name>` manually (see README "Manual cleanup").
 #   - Volume name: coder-<owner-uuid>-claude. List with:
-#       docker volume ls -f label=coder.purpose=claude-config
+#       docker volume ls --format '{{.Name}}' | grep -- '-claude$'
 #
 # MOUNT LAYOUT INSIDE CONTAINER:
 #   /home/coder/.claude-shared/            ← named volume mount point
@@ -102,6 +103,14 @@ data "coder_workspace_owner" "me" {}
 
 locals {
   username = data.coder_workspace_owner.me.name
+
+  # Per-owner Claude config volume name, keyed on the immutable owner UUID (a
+  # rename never changes it). This volume is intentionally NOT a Terraform
+  # resource — see the docker_container mount below. Docker auto-creates it on
+  # first workspace start and never auto-removes it, so it survives workspace
+  # deletion (D-03) WITHOUT a managed resource + prevent_destroy (which would
+  # otherwise block `coder delete` entirely).
+  claude_volume_name = "coder-${data.coder_workspace_owner.me.id}-claude"
 }
 
 # ── Workspace agent ───────────────────────────────────────────────────────────
@@ -265,38 +274,29 @@ resource "docker_volume" "home_volume" {
   }
 }
 
-# ── Claude config volume (per-owner, CLAUDE-02) ───────────────────────────────
+# ── Claude config volume (per-owner, CLAUDE-02 / D-03) ────────────────────────
 #
-# docker_volume has NO count — the volume must survive workspace stop/start
-# AND workspace deletion (prevent_destroy = true).
-# Name uses owner UUID (immutable) — NOT owner name, which can change and
-# would orphan the volume. (D-03)
-
-resource "docker_volume" "claude_config_volume" {
-  name = "coder-${data.coder_workspace_owner.me.id}-claude"
-
-  # The volume name is keyed on the immutable owner UUID, so a username rename
-  # never changes it. prevent_destroy ensures workspace deletion does NOT
-  # destroy shared auth/config. ignore_changes guards against a future
-  # name-format change forcing a destroy/recreate. (D-03)
-  lifecycle {
-    ignore_changes  = [name]
-    prevent_destroy = true
-  }
-
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.owner_id"
-    value = data.coder_workspace_owner.me.id
-  }
-  labels {
-    label = "coder.purpose"
-    value = "claude-config"
-  }
-}
+# The per-owner Claude config volume is INTENTIONALLY NOT declared as a
+# docker_volume resource. It is referenced by name only, in the docker_container
+# mount below (local.claude_volume_name), and Docker auto-creates it on first
+# workspace start.
+#
+# WHY NOT a managed resource:
+#   A docker_volume resource declared in this template lives in EVERY workspace's
+#   Terraform state. Deleting a workspace runs `terraform destroy`, which would
+#   destroy the volume too — taking the owner's shared auth/config with it. The
+#   previous design guarded that with `prevent_destroy = true`, but that made the
+#   volume undeletable, so `coder delete <workspace>` failed outright:
+#     "Resource ... has lifecycle.prevent_destroy set, but the plan calls for
+#      this resource to be destroyed."
+#   You cannot have a per-workspace-managed resource that outlives the workspace
+#   that manages it. An unmanaged, named Docker volume is the correct model:
+#   Docker creates it on demand and never auto-removes it, so it persists across
+#   workspace stop/start AND workspace deletion with no lifecycle gymnastics.
+#
+# Trade-off: the volume carries no Terraform-set labels. Discover the per-owner
+# volumes by name pattern instead (see README "Manual cleanup"):
+#   docker volume ls --format '{{.Name}}' | grep -- '-claude$'
 
 # ── Workspace image (built in-template) ───────────────────────────────────────
 #
@@ -400,7 +400,7 @@ resource "docker_container" "workspace" {
   # child mount — required for correct Linux mount-namespace shadowing (T-04-03).
   volumes {
     container_path = "/home/coder/.claude-shared"
-    volume_name    = docker_volume.claude_config_volume.name
+    volume_name    = local.claude_volume_name
     read_only      = false
   }
 

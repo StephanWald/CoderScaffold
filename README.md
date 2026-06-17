@@ -432,14 +432,15 @@ owner's immutable UUID (not the username) so a username rename never orphans it.
 > no file locking — concurrent writes from two simultaneously-running workspaces can corrupt
 > session state. Sequential use across workspaces is safe.
 
-**Volume cleanup (orphaned volumes):** Because the volume is created with `prevent_destroy = true`,
-deleting a Coder user or workspace never removes it automatically. Over time, deleted owners
-leave orphaned `coder-<owner-uuid>-claude` volumes on the Docker host. There is no cleanup
-script — this is a deliberate documented manual step. To find and remove orphaned volumes:
+**Volume cleanup (orphaned volumes):** The per-owner volume is an *unmanaged* named Docker
+volume (not a Terraform resource), so Docker never auto-removes it — it deliberately survives
+workspace deletion so an owner's auth/config persists. Over time, deleted owners leave orphaned
+`coder-<owner-uuid>-claude` volumes on the Docker host. There is no cleanup script — this is a
+deliberate documented manual step. To find and remove orphaned volumes:
 
 ```bash
-# Discover all Claude config volumes by label
-docker volume ls -f label=coder.purpose=claude-config
+# Discover all Claude config volumes by name (they end in -claude)
+docker volume ls --format '{{.Name}}' | grep -- '-claude$'
 
 # Remove a specific orphaned volume. WARNING: permanently deletes auth, settings, skills, and MCP config for that owner.
 docker volume rm <volume-name>
