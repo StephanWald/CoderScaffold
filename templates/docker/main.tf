@@ -134,12 +134,6 @@ resource "coder_agent" "main" {
     # Create internal directory structure.
     mkdir -p "$CLAUDE_SHARED/dot-claude"
 
-    # Initialize ~/.claude.json placeholder if missing (prevents claude from
-    # writing ~/.claude.json as a file before the symlink is in place).
-    if [ ! -f "$CLAUDE_SHARED/dot-claude.json" ]; then
-      echo '{}' > "$CLAUDE_SHARED/dot-claude.json"
-    fi
-
     # CR-01 upgrade-path fix: if ~/.claude is a real dir (pre-template workspace),
     # migrate contents into the shared volume before replacing with a symlink.
     if [ ! -L "$HOME/.claude" ] && [ -e "$HOME/.claude" ]; then
@@ -150,11 +144,22 @@ resource "coder_agent" "main" {
     # Symlink ~/.claude → shared directory (-sfn: -n treats target as file if symlink).
     ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"
 
-    # WR-01 content-preservation fix: if ~/.claude.json is a real file, preserve
-    # its content into the shared volume before replacing with a symlink.
+    # CR-01 content-preservation fix: migrate a pre-existing real ~/.claude.json
+    # into the shared volume FIRST, before the placeholder can shadow it. The
+    # [ ! -L ] && [ -f ] test proves the source is the developer's real file, so
+    # force-overwrite the (possibly-placeholder) shared file with the real content.
+    # (A no-clobber cp -n here would silently skip once a placeholder exists and
+    # then rm the real file — the data-loss bug this ordering prevents.)
     if [ ! -L "$HOME/.claude.json" ] && [ -f "$HOME/.claude.json" ]; then
-      cp -n "$HOME/.claude.json" "$CLAUDE_SHARED/dot-claude.json"
+      cp -f "$HOME/.claude.json" "$CLAUDE_SHARED/dot-claude.json"
       rm -f "$HOME/.claude.json"
+    fi
+
+    # Initialize ~/.claude.json placeholder only as a last resort — when no real
+    # file was migrated and no prior shared file exists (prevents claude from
+    # writing ~/.claude.json as a file before the symlink is in place).
+    if [ ! -f "$CLAUDE_SHARED/dot-claude.json" ]; then
+      echo '{}' > "$CLAUDE_SHARED/dot-claude.json"
     fi
 
     # Symlink ~/.claude.json → shared file.
