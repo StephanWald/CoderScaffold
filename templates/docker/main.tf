@@ -189,7 +189,7 @@ resource "docker_image" "main" {
 resource "docker_container" "workspace" {
   count    = data.coder_workspace.me.start_count
   image    = docker_image.main.image_id
-  name     = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
+  name     = "coder-${lower(data.coder_workspace_owner.me.name)}-${lower(data.coder_workspace.me.name)}"
   hostname = data.coder_workspace.me.name
 
   # Replace localhost/127.0.0.1 with host.docker.internal so the workspace
