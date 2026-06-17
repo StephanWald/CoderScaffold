@@ -12,7 +12,17 @@ findings:
   warning: 5
   info: 3
   total: 10
+  false_positives: 1
+  actionable_critical: 1
 status: issues_found
+resolution_notes: |
+  CR-01 confirmed false positive: /usr/bin/curl IS present in ghcr.io/coder/coder:v2.33.8
+  (verified via `docker compose exec coder command -v curl`). The coder healthcheck works as-is.
+  CR-02 fixed: README migration section replaced with safe logical pg_dump/pg_restore path.
+  WR-01 fixed: migration comment and command now consistent (coder_coder_pgdata with explanation).
+  WR-04 fixed: reverse-proxy upstream now leads with container-network form (http://coder:7080).
+  WR-05 fixed: start_period: 30s added to database healthcheck in compose.yaml.
+  WR-02, WR-03, IN-02, IN-03: accepted as by-design / out of scope for this iteration.
 ---
 
 # Phase 01: Code Review Report
@@ -40,27 +50,16 @@ Several internal-consistency and documentation issues round out the warnings.
 ### CR-01: Coder healthcheck uses `curl`, which is not in the Coder image — container reported permanently unhealthy
 
 **File:** `compose.yaml:17-22`
-**Issue:** The healthcheck is `test: ["CMD", "curl", "-f", "http://localhost:7080/healthz"]`. The `ghcr.io/coder/coder` image is a minimal image built around the `coder` Go binary and does **not** ship `curl` (nor `wget`). With `CMD` (exec form, no shell), Docker tries to exec `curl` directly; the binary is missing, every probe errors out, and the container settles into state `unhealthy` forever even though Coder is serving correctly on `:7080`.
+**Status: CONFIRMED FALSE POSITIVE** — `/usr/bin/curl` IS present in `ghcr.io/coder/coder:v2.33.8`. Verified via `docker compose exec coder command -v curl` which returns `/usr/bin/curl`. The coder image includes curl despite being described as minimal; the healthcheck works correctly and the container reaches `(healthy)` as documented. No fix required.
+
+**Issue (original):** The healthcheck is `test: ["CMD", "curl", "-f", "http://localhost:7080/healthz"]`. The `ghcr.io/coder/coder` image is a minimal image built around the `coder` Go binary and does **not** ship `curl` (nor `wget`). With `CMD` (exec form, no shell), Docker tries to exec `curl` directly; the binary is missing, every probe errors out, and the container settles into state `unhealthy` forever even though Coder is serving correctly on `:7080`.
 
 This is not cosmetic in this scaffold:
 - README Quick Start step 4 (`README.md:36-38`) tells the operator to run `docker compose ps` and "Look for: coder (healthy)". The operator will *never* see `(healthy)` and will reasonably conclude the deployment failed.
 - Nothing currently `depends_on` the `coder` service's health, so startup is not blocked today — but the moment any future service (or an orchestrator/monitor) keys off `condition: service_healthy` for `coder`, it will hang indefinitely.
 
 The Coder binary itself can perform the probe (it speaks HTTP and the binary is guaranteed present). Prefer a probe that does not assume `curl`.
-**Fix:**
-```yaml
-healthcheck: # SRV-04; start_period covers Coder's DB-migration window
-  # The coder image does not ship curl/wget; use the coder binary's own probe.
-  test: ["CMD", "/opt/coder", "--version"]   # liveness only
-  # For a real readiness probe against /healthz, install curl in a derived
-  # image or run the check from outside the container. Do NOT assume curl
-  # exists in ghcr.io/coder/coder.
-  interval: 10s
-  timeout: 5s
-  retries: 5
-  start_period: 30s
-```
-At minimum, verify the chosen `test` binary actually exists in the pinned image (`docker run --rm --entrypoint sh ghcr.io/coder/coder:v2.33.8 -c 'command -v curl wget'`) before shipping, and reconcile the README's "(healthy)" expectation with the real probe behavior.
+**Fix:** No fix applied — CR-01 is a false positive. curl is present in the pinned image and the healthcheck is correct as-is.
 
 ### CR-02: Quickstart migration does a raw PGDATA file copy across (possibly mismatched) Postgres majors — produces a DB that won't start
 

@@ -127,7 +127,7 @@ proxy (nginx, Caddy, Traefik, HAProxy, etc.) to meet these requirements.
 
 | Requirement | Detail |
 |-------------|--------|
-| **Upstream** | `http://127.0.0.1:7080` (use the host IP instead of `127.0.0.1` if the proxy runs off-host) |
+| **Upstream** | If the proxy is a **Compose service on the same Docker network**: use `http://coder:7080` (the service name). If the proxy runs **directly on the host** (process, not container): use `http://127.0.0.1:7080`. If the proxy runs **off-host** on a different machine: use the host IP (e.g. `http://192.168.1.10:7080`). `127.0.0.1` inside a proxy container refers to that container itself, not Coder. |
 | **TLS termination** | The proxy handles HTTPS; Coder only listens on HTTP |
 | **Wildcard TLS certificate** | Must cover `*.<apps-domain>` matching `CODER_WILDCARD_ACCESS_URL` (e.g. `*.coder.example.com`) |
 | **`Host` header** | Forward the original `Host` header verbatim — do not replace it with the proxy hostname |
@@ -156,18 +156,48 @@ The upstream Docker quickstart uses the named volume `coder_coder_data`. This sc
 
 **Existing quickstart data migration (named volume → named volume):**
 
+Use a logical dump/restore — this is safe across **any** Postgres major version (including when
+the old quickstart ran Postgres 16 and this scaffold uses postgres:17). Raw PGDATA file copies
+only work when both source and destination run the **same Postgres major version**, and postgres:17
+will refuse to start on data from an older cluster.
+
+**Safe path (works across Postgres majors):**
+
 ```bash
-# Copy data from the old coder_coder_data volume into the new coder_pgdata volume
+# 1. While the OLD quickstart stack is still running, dump logically:
+docker compose exec -T database \
+  pg_dump -U "${POSTGRES_USER:-coder}" -Fc "${POSTGRES_DB:-coder}" > coder-migrate.dump
+
+# 2. Bring up the NEW scaffold stack (fresh postgres:17 — data is empty):
+docker compose up -d
+
+# 3. Wait for the database service to become healthy, then restore:
+docker compose exec -T database \
+  pg_restore -U "${POSTGRES_USER:-coder}" -d "${POSTGRES_DB:-coder}" \
+  --clean --if-exists < coder-migrate.dump
+```
+
+No admin account re-creation is needed — the dump includes all users, templates, and workspace
+metadata. Adjust `-U` and `-d` flags to match your old `POSTGRES_USER` / `POSTGRES_DB` values.
+
+**Same-major shortcut (Postgres 17 → 17 only):**
+
+If you can verify the old quickstart also ran postgres:17 (check with
+`docker run --rm -v coder_coder_data:/d alpine cat /d/PG_VERSION`), you may use the faster raw
+file copy instead:
+
+```bash
+# Only valid when source PGDATA was written by the SAME Postgres major (17).
+# postgres:17 will refuse to start on data from Postgres 16 or earlier.
+# Compose prefixes the top-level volume key coder_pgdata with the project name
+# (coder), so the real Docker volume name is coder_coder_pgdata (double coder_).
 docker run --rm \
   -v coder_coder_data:/from \
   -v coder_coder_pgdata:/to \
   alpine sh -c 'cp -a /from/. /to/'
 
-# Then bring up the stack with the new compose
 docker compose up -d
 ```
-
-After migration, Postgres will initialize from the copied data. No admin re-creation is needed.
 
 ---
 
