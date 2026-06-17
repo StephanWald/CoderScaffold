@@ -13,7 +13,7 @@ Starting from the upstream proof-of-concept `compose.yaml`, this scaffold is har
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Compose Hardening & Configuration** - Production-grade compose stack with persistence, pinned image, healthcheck, `.env` secrets, and public/wildcard URLs
+- [x] **Phase 1: Compose Hardening & Configuration** - Production-grade compose stack with persistence, pinned image, healthcheck, `.env` secrets, and public/wildcard URLs
 - [ ] **Phase 2: Backup & Restore Scripts** - Non-interactive, cron-friendly `pg_dump`/`pg_restore` scripts using the bind-mount layout from Phase 1
 - [ ] **Phase 3: Docker Workspace Template** - Terraform template provisioning workspaces with code-server, JetBrains Gateway, persistent home, and reliable agent connectivity
 
@@ -40,7 +40,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Configuration contract + operator runbook: .env.example + README.md (chown prerequisite, first-admin bootstrap, reverse-proxy contract) [Wave 2]
+- [x] 01-02-PLAN.md — Configuration contract + operator runbook: .env.example + README.md (chown prerequisite, first-admin bootstrap, reverse-proxy contract) [Wave 2]
 
 ### Phase 2: Backup & Restore Scripts
 
@@ -80,6 +80,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Compose Hardening & Configuration | 1/2 | In Progress|  |
+| 1. Compose Hardening & Configuration | 2/2 | Complete | 2026-06-17 |
 | 2. Backup & Restore Scripts | 0/TBD | Not started | - |
 | 3. Docker Workspace Template | 0/TBD | Not started | - |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Plan 01-01 complete; ready for Plan 01-02"
-last_updated: "2026-06-16T19:45:00.000Z"
-last_activity: 2026-06-16 -- Phase 01 Plan 01 complete (compose hardening + .gitignore, stack verified healthy)
+stopped_at: "Phase 01 implementation complete (Plan 01-01 + 01-02 done); Phase 1 pending final acceptance — ready for Phase 02"
+last_updated: "2026-06-17T00:00:00.000Z"
+last_activity: 2026-06-17 -- Phase 01 Plan 02 complete (.env.example + README.md operator runbook, checkpoint approved)
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 25
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-16)
 
 ## Current Position
 
-Phase: 01 (compose-hardening-configuration) — EXECUTING
-Plan: 2 of 2 (Plan 01 complete; Plan 02 next)
-Status: Plan 01-01 complete; ready for Plan 01-02
-Last activity: 2026-06-16 -- Phase 01 Plan 01 complete (compose hardening + .gitignore, stack verified healthy)
+Phase: 01 (compose-hardening-configuration) — COMPLETE
+Plan: 2 of 2 (both plans complete)
+Status: Phase 01 implementation complete; Phase 1 deliverables: compose.yaml hardened, .env.example + README.md delivered
+Last activity: 2026-06-17 -- Phase 01 Plan 02 complete (.env.example + README.md operator runbook, checkpoint approved)
 
 Progress: [##░░░░░░░░] 25%
 
@@ -44,16 +44,17 @@ Progress: [##░░░░░░░░] 25%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-compose-hardening-configuration | 1 | ~90min | ~90min |
+| 01-compose-hardening-configuration | 2 | ~135min | ~67min |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (~90min, 2 tasks, 2 files)
+- Last 5 plans: 01-01 (~90min, 2 tasks, 2 files), 01-02 (~45min, 2 tasks, 2 files)
 - Trend: —
 
 *Updated after each plan completion*
 
 | Phase 01-compose-hardening-configuration P01 | 90min | 2 tasks + 1 checkpoint | 2 files |
+| Phase 01-compose-hardening-configuration P02 | 45min | 2 tasks + 1 checkpoint | 2 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Phase 01-01 REVISED]: Default Postgres storage to named volume coder_pgdata (cross-platform, no chown required); host bind mount opt-in via CODER_PG_DATA_DIR=./data/postgres. Replaces locked "host bind mount" roadmap decision. Rationale: VirtioFS on macOS/Windows Docker Desktop denies chown on bind-mounted PGDATA; pg_dump logical backups are storage-backend-transparent so bind mount was never required for backups.
 - [Phase 01-01]: CODER_ACCESS_URL defaults to http://127.0.0.1:7080 (full URL with protocol required by Coder; real URL in .env disables dev tunnel)
 - [Phase 01-01]: CODER_WILDCARD_ACCESS_URL defaults empty (wildcard apps disabled in quickstart; set in .env for production)
+- [Phase 01-02]: CODER_PG_DATA_DIR is commented opt-in in .env.example (not active) — prevents bind-mount crash-loop when operator copies .env.example to .env on macOS/Windows without editing the path
+- [Phase 01-02]: README quick-start uses named-volume path (no chown required by default); chown + failure symptom scoped to the "Optional: host bind mount" subsection
 
 ### Pending Todos
 
@@ -76,7 +79,6 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 1 Plan 02: Document the bind-mount opt-in path (CODER_PG_DATA_DIR) and its chown 999:999 prerequisite in README (OPS-03); default named volume path needs no chown and should be the quickstart default
 - Phase 3: Docker socket GID varies by host distro — document as operator-resolved, not hardcoded (TPL-05)
 - Phase 3: `host.docker.internal` handling for workspace agent → access URL connectivity (TPL-06) — may need Terraform `extra_hosts` entry on Linux hosts
 
@@ -89,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-16T19:45:00.000Z
-Stopped at: Plan 01-01 complete; ready for Plan 01-02 (Configuration contract + operator runbook: .env.example + README.md)
-Resume file: .planning/phases/01-compose-hardening-configuration/01-02-PLAN.md
+Last session: 2026-06-17T00:00:00.000Z
+Stopped at: Phase 01 implementation complete (Plans 01-01 and 01-02 done). Ready for Phase 02: Backup & Restore Scripts.
+Resume file: .planning/phases/ (Phase 02 plans TBD — run /gsd:plan-phase 02 to generate plans)
