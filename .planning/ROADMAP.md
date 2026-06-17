@@ -54,7 +54,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A backup produced by `backup.sh` restores cleanly into a freshly initialized database via `scripts/restore.sh` — post-restore, the Coder server starts and existing workspaces and users are visible
   3. Both scripts return non-zero exit codes on failure, making them safe for use with external schedulers or backup tools (e.g. `set -e`, cron wrappers, monitoring scripts)
 
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
 
@@ -65,6 +65,10 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 02-02-PLAN.md — restore.sh (stop/restore/start coder + EXIT trap, arg validation) + README backup/restore section + end-of-phase round-trip [Wave 2]
+
+**Gap closure** *(from UAT BAK-01/SC-1 blocker)*
+
+- [ ] 02-03-PLAN.md — Fix backup.sh integrity check: replace `pg_restore --list /dev/stdin` with `docker compose cp` seekable in-container check; surface pg_restore stderr; preserve exit-code contract [Wave 1]
 
 ### Phase 3: Docker Workspace Template
 
@@ -91,5 +95,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Compose Hardening & Configuration | 2/2 | Complete | 2026-06-17 |
-| 2. Backup & Restore Scripts | 2/2 | Complete | 2026-06-17 |
+| 2. Backup & Restore Scripts | 2/3 | Gap closure pending | 2026-06-17 |
 | 3. Docker Workspace Template | 0/TBD | Not started | - |
