@@ -441,7 +441,7 @@ script — this is a deliberate documented manual step. To find and remove orpha
 # Discover all Claude config volumes by label
 docker volume ls -f label=coder.purpose=claude-config
 
-# Remove a specific orphaned volume (deletion forces re-login for that owner — not data-unsafe)
+# Remove a specific orphaned volume. WARNING: permanently deletes auth, settings, skills, and MCP config for that owner.
 docker volume rm <volume-name>
 ```
 
