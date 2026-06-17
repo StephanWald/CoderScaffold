@@ -140,8 +140,22 @@ resource "coder_agent" "main" {
       echo '{}' > "$CLAUDE_SHARED/dot-claude.json"
     fi
 
+    # CR-01 upgrade-path fix: if ~/.claude is a real dir (pre-template workspace),
+    # migrate contents into the shared volume before replacing with a symlink.
+    if [ ! -L "$HOME/.claude" ] && [ -e "$HOME/.claude" ]; then
+      cp -an "$HOME/.claude/." "$CLAUDE_SHARED/dot-claude/" 2>/dev/null || true
+      rm -rf "$HOME/.claude"
+    fi
+
     # Symlink ~/.claude → shared directory (-sfn: -n treats target as file if symlink).
     ln -sfn "$CLAUDE_SHARED/dot-claude" "$HOME/.claude"
+
+    # WR-01 content-preservation fix: if ~/.claude.json is a real file, preserve
+    # its content into the shared volume before replacing with a symlink.
+    if [ ! -L "$HOME/.claude.json" ] && [ -f "$HOME/.claude.json" ]; then
+      cp -n "$HOME/.claude.json" "$CLAUDE_SHARED/dot-claude.json"
+      rm -f "$HOME/.claude.json"
+    fi
 
     # Symlink ~/.claude.json → shared file.
     ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
