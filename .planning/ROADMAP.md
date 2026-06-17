@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** — Phases 1–3 (shipped 2026-06-17) — see [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
-- 🚧 **v1.1 Portable Claude Code Setup** — Phase 4 (in progress — verification found gaps, gap closure required)
+- 🚧 **v1.1 Portable Claude Code Setup** — Phase 4 (in progress — verification found gaps, gap closure planned)
 
 ## Phases
 
@@ -20,7 +20,7 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 
 ### v1.1 Portable Claude Code Setup
 
-- [ ] **Phase 4: Portable Claude Config** - Wire claude-code module + per-owner shared volume into the Docker template; ship operator runbook — verification found gaps (CR-01), gap closure required
+- [ ] **Phase 4: Portable Claude Config** - Wire claude-code module + per-owner shared volume into the Docker template; ship operator runbook — verification found gaps (CR-01), gap closure plan 04-03 created
 
 ## Phase Details
 
@@ -37,7 +37,8 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
   4. A different owner's workspaces are isolated — their Claude config volume is distinct and inaccessible to the first owner
   5. The README contains an operator runbook section covering: first-run login steps, what is shared across workspaces, and the concurrent-workspace write caveat
 
-**Plans**: 2 plansPlans:
+**Plans**: 3 plans
+
 **Wave 1**
 
 - [x] 04-01-PLAN.md — main.tf: anthropic_api_key variable, per-owner claude_config_volume, .claude-shared mount, startup_script symlinks, claude-code module, inline [REUSABLE] snippet (CLAUDE-01..06)
@@ -45,6 +46,7 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 04-02-PLAN.md — README operator runbook: first-run login, what is shared, seeding, concurrent-write caveat, manual volume cleanup (CLAUDE-07)
+- [ ] 04-03-PLAN.md — gap closure: guard startup_script symlinks against pre-existing real ~/.claude dir + ~/.claude.json (CR-01, WR-01); correct README cleanup blast-radius wording (WR-03) (CLAUDE-03, CLAUDE-04, CLAUDE-07)
 
 **Planning consideration**: The open architecture decision (CLAUDE_CONFIG_DIR vs neutral-mount+symlinks) was resolved in planning — locked to the neutral-mount + symlink approach per CONTEXT.md D-01 (ARCHITECTURE.md HIGH-confidence recommendation; CLAUDE_CONFIG_DIR rejected as undocumented/unimplemented).
 
@@ -55,4 +57,4 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 | 1. Compose Hardening & Configuration | v1.0 | 2/2 | Complete | 2026-06-17 |
 | 2. Backup & Restore Scripts | v1.0 | 3/3 | Complete | 2026-06-17 |
 | 3. Docker Workspace Template | v1.0 | 2/2 | Complete | 2026-06-17 |
-| 4. Portable Claude Config | v1.1 | 2/2 | Gaps Found | — |
+| 4. Portable Claude Config | v1.1 | 2/3 | Gap Closure Planned | — |
