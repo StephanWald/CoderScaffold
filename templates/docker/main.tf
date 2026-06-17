@@ -388,7 +388,6 @@ module "code-server" {
   source       = "registry.coder.com/coder/code-server/coder"
   version      = "1.5.0"
   agent_id     = coder_agent.main.id
-  agent_name   = "main"
   folder       = "/home/coder"
   display_name = "VS Code"
   order        = 1
