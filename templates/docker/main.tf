@@ -127,8 +127,12 @@ resource "coder_agent" "main" {
 
     # Fix ownership on first use (volume starts root-owned when empty).
     # chown is scoped narrowly to $CLAUDE_SHARED only (T-04-02).
+    # WR-03: make the chown non-fatal under set -e — a missing passwordless sudo
+    # in a custom workspace_image (or a locked file) must not abort the whole
+    # startup_script before the symlinks are created. Log and continue instead.
     if [ "$(stat -c '%U' "$CLAUDE_SHARED")" != "coder" ]; then
-      sudo chown -R coder:coder "$CLAUDE_SHARED"
+      sudo chown -R coder:coder "$CLAUDE_SHARED" \
+        || echo "WARN: could not chown $CLAUDE_SHARED; continuing" >&2
     fi
 
     # Create internal directory structure.
