@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Portable Claude Code Setup
 status: awaiting_human_verification
-stopped_at: Phase 04 re-verified after code-review BLOCKER fix — status human_needed (5/5 must-haves verified by code; 5 live-environment UAT items pending in 04-UAT.md)
-last_updated: "2026-06-17T20:05:00Z"
-last_activity: 2026-06-17 -- Phase 04 code-review found+fixed data-loss BLOCKER (CR-01); re-verification human_needed
+stopped_at: Phase 04 UAT paused (partial). Live deploy testing fixed 2 deploy-blocking defects (G1 invalid module args; G2 volume prevent_destroy blocked workspace deletion) + added Node-in-image and GSD install. Functional UAT Tests 1-5 not yet run; deploy path now works.
+last_updated: "2026-06-17T21:30:00Z"
+last_activity: 2026-06-17 -- Phase 04 UAT session: deploy hardened (module args, volume deletion), Node+GSD added; functional Tests 1-5 still pending
 progress:
   total_phases: 1
   completed_phases: 0
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-17)
 
 ## Current Position
 
-Phase: 04 (portable-claude-config) — AWAITING HUMAN VERIFICATION
+Phase: 04 (portable-claude-config) — AWAITING HUMAN VERIFICATION (UAT partial)
 Plan: 3 of 3 (all plans done; gap closure 04-03 done)
-Status: Re-verification human_needed — code-review BLOCKER (CR-01 ~/.claude.json data loss) found and fixed; 5/5 must-haves verified by code, 5 live-environment UAT items pending. Run /gsd-verify-work 04.
-Last activity: 2026-06-17 -- Phase 04 BLOCKER fix merged; re-verification human_needed
+Status: UAT paused. Live deploy hardened — fixed G1 (invalid module args blocking push) + G2 (volume prevent_destroy blocking workspace delete); added Node-in-image + GSD install (out-of-scope enhancements). Structural wiring validated live (symlinks, volume mount, claude + GSD install). Functional Tests 1-5 (auth A→B, upgrade-path migration, idempotency, owner isolation) NOT done. Resume: /gsd-verify-work 04.
+Last activity: 2026-06-17 -- Phase 04 UAT session: deploy fixes (G1/G2) + Node/GSD; Tests 1-5 pending
 
 ## Performance Metrics
 
