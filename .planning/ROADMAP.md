@@ -34,8 +34,11 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
   3. Owner's global settings, personal skills, and user-scoped MCP servers (stored in `~/.claude/`) carry into a newly created workspace without any manual copy step
   4. A different owner's workspaces are isolated — their Claude config volume is distinct and inaccessible to the first owner
   5. The README contains an operator runbook section covering: first-run login steps, what is shared across workspaces, and the concurrent-workspace write caveat
-**Plans**: TBD
-**Planning consideration**: The open architecture decision (CLAUDE_CONFIG_DIR vs neutral-mount+symlinks) must be resolved at the start of phase planning — validate empirically or accept the symlink approach recommended by ARCHITECTURE.md before writing any Terraform.
+**Plans**: 2 plans
+Plans:
+- [ ] 04-01-PLAN.md — main.tf: anthropic_api_key variable, per-owner claude_config_volume, .claude-shared mount, startup_script symlinks, claude-code module, inline [REUSABLE] snippet (CLAUDE-01..06)
+- [ ] 04-02-PLAN.md — README operator runbook: first-run login, what is shared, seeding, concurrent-write caveat, manual volume cleanup (CLAUDE-07)
+**Planning consideration**: The open architecture decision (CLAUDE_CONFIG_DIR vs neutral-mount+symlinks) was resolved in planning — locked to the neutral-mount + symlink approach per CONTEXT.md D-01 (ARCHITECTURE.md HIGH-confidence recommendation; CLAUDE_CONFIG_DIR rejected as undocumented/unimplemented).
 
 ## Progress
 
@@ -44,4 +47,4 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 | 1. Compose Hardening & Configuration | v1.0 | 2/2 | Complete | 2026-06-17 |
 | 2. Backup & Restore Scripts | v1.0 | 3/3 | Complete | 2026-06-17 |
 | 3. Docker Workspace Template | v1.0 | 2/2 | Complete | 2026-06-17 |
-| 4. Portable Claude Config | v1.1 | 0/? | Not started | - |
+| 4. Portable Claude Config | v1.1 | 0/2 | Not started | - |
