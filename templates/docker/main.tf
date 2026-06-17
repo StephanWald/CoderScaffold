@@ -119,10 +119,11 @@ resource "coder_agent" "main" {
 resource "docker_volume" "home_volume" {
   name = "coder-${data.coder_workspace.me.id}-home"
 
-  # Prevent Terraform from destroying the home volume on workspace rename
-  # or template update. Without this, all home data would be lost. (Pitfall 2)
+  # The volume name is keyed on the immutable workspace ID (UUID), so a rename
+  # never changes it. ignore_changes on [name] guards against a future name-format
+  # change forcing a destroy/recreate (which would lose all home data). (Pitfall 2)
   lifecycle {
-    ignore_changes = all
+    ignore_changes = [name]
   }
 
   labels {
