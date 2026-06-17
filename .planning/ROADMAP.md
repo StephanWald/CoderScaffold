@@ -68,7 +68,7 @@ Plans:
 
 **Gap closure** *(from UAT BAK-01/SC-1 blocker)*
 
-- [ ] 02-03-PLAN.md — Fix backup.sh integrity check: replace `pg_restore --list /dev/stdin` with `docker compose cp` seekable in-container check; surface pg_restore stderr; preserve exit-code contract [Wave 1]
+- [x] 02-03-PLAN.md — Fix backup.sh integrity check: replace `pg_restore --list /dev/stdin` with `docker compose cp` seekable in-container check; surface pg_restore stderr; preserve exit-code contract [Wave 1]
 
 ### Phase 3: Docker Workspace Template
 
@@ -95,5 +95,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Compose Hardening & Configuration | 2/2 | Complete | 2026-06-17 |
-| 2. Backup & Restore Scripts | 2/3 | Gap closure pending | 2026-06-17 |
+| 2. Backup & Restore Scripts | 3/3 | Complete   | 2026-06-17 |
 | 3. Docker Workspace Template | 0/TBD | Not started | - |
