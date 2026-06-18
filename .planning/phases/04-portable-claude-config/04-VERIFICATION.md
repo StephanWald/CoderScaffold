@@ -1,8 +1,9 @@
 ---
 phase: 04-portable-claude-config
-verified: 2026-06-17T20:00:00Z
-status: human_needed
+verified: 2026-06-18T00:00:00Z
+status: verified
 score: 5/5 must-haves verified
+human_verification_result: "4/5 live smoke tests PASSED in UAT (auth-persistence, upgrade-path directory guard, content-preservation JSON, idempotency). Owner-isolation (#5) accepted as an acknowledged gate — no second owner account available to exercise it. See ## Acknowledged Gaps and 04-UAT.md."
 overrides_applied: 0
 re_verification:
   previous_status: gaps_found
@@ -142,6 +143,32 @@ No `TBD`, `FIXME`, or `XXX` markers found in modified files. No stub patterns. N
 **Test:** Create workspaces for two different Coder owners X and Y. Run `docker volume ls -f label=coder.purpose=claude-config` on the Docker host. Authenticate as X in X's workspace. Open Y's workspace and run `claude`.
 **Expected:** Two distinct volumes with different UUID segments in their names. Y's workspace has no access to X's credentials and starts unauthenticated.
 **Why human:** Requires a running Coder server with two distinct owner accounts.
+
+### Live UAT Results (2026-06-18)
+
+The five human-verification items above were exercised against a live Coder + Docker
+deploy during `/gsd-verify-work 04`. Results:
+
+| # | Human verification item | Result |
+|---|--------------------------|--------|
+| 1 | Live authentication smoke test (SC-1/2/3) — login in A → B pre-authenticated | ✅ PASS |
+| 2 | Upgrade-path directory guard (CR-01) — real `~/.claude` dir → symlink, no nesting | ✅ PASS |
+| 3 | Content-preservation JSON (WR-01) — real `~/.claude.json` survives, no `{}` clobber | ✅ PASS |
+| 4 | Idempotency — `[ ! -L ]` guards no-op across restarts, symlinks stable | ✅ PASS |
+| 5 | Owner isolation (SC-4) — two owners X/Y, distinct volumes, no cross-access | ⛔ ACKNOWLEDGED GATE |
+
+Both data-loss paths (#2, #3) and the core auth-persistence promise (#1) passed live.
+
+### Acknowledged Gaps
+
+- gate: "Owner isolation (SC-4): two distinct owners X and Y get distinct per-owner
+  `-claude` volumes, and Y's workspace cannot read X's credentials / starts unauthenticated."
+  status: not_exercised
+  reason: "No second owner account available in the test environment to drive the two-owner
+  path. Accepted by the user (stephan@wald.tv) on 2026-06-18 as an acknowledged gate; phase
+  marked complete without it. Isolation logic is verified by code inspection (per-owner volume
+  keyed on `data.coder_workspace_owner.me.id` UUID — truth #5, Requirement CLAUDE-02)."
+  follow_up: "Re-run `/gsd-verify-work 04` once a second owner account exists to close live."
 
 ### Re-Verification Summary
 

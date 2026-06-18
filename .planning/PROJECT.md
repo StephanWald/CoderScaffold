@@ -40,18 +40,15 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 - ✓ Template wires code-server (embedded VSCode) into workspaces (`coder/code-server` 1.5.0) — Phase 3
 - ✓ Template supports JetBrains Gateway (IntelliJ) connectivity (`coder/jetbrains-gateway` 1.2.6) — Phase 3
 - ✓ Workspace `/home` persists across stop/start (per-workspace Docker volume); agent reaches the access URL via `host.docker.internal`/`host-gateway` — Phase 3
+- ✓ Install + enable Claude Code in the Docker workspace template via the `coder/claude-code` module 5.2.0 (CLAUDE-01) — Phase 4
+- ✓ Per-owner shared volume covering `~/.claude/` and `~/.claude.json` (auth, settings, skills, user-scoped MCP servers) (CLAUDE-02..04) — Phase 4
+- ✓ Shared Claude config mounted over the per-workspace home volume; upgrade-path migration preserves pre-existing real `~/.claude` dir + `~/.claude.json` with no data loss (CLAUDE-03) — Phase 4, UAT live-verified (Tests 2 & 3)
+- ✓ First-run login flow — empty volume, authenticate once, persists and shares across workspaces (CLAUDE-05) — Phase 4, UAT live-verified (Test 1: login in A → B pre-authenticated)
+- ✓ Reusable `[REUSABLE]` drop-in pattern + operator runbook (seeding, auth, concurrent-write caveat) (CLAUDE-06, CLAUDE-07) — Phase 4
 
-### Active
-
-<!-- Current scope. Building toward these. Milestone v1.1 — Portable Claude Code Setup. -->
-
-- [ ] (v1.1) Install + enable Claude Code in the Docker workspace template via the `coder/claude-code` module
-- [ ] (v1.1) Per-owner shared volume covering `~/.claude/` and `~/.claude.json` (auth, settings, skills, user-scoped MCP servers)
-- [ ] (v1.1) Mount the shared Claude config into workspaces, layered over the per-workspace home volume
-- [ ] (v1.1) First-run login flow — empty volume, authenticate once, persists and shares across workspaces
-- [ ] (v1.1) Document the reusable pattern + operator runbook (seeding, auth, concurrent-write caveat)
-
-> See REQUIREMENTS.md for the scoped, REQ-ID'd v1.1 requirements.
+> v1.1 requirements CLAUDE-01..07 are all delivered. See REQUIREMENTS.md for the scoped REQ-IDs.
+> **Acknowledged gate (not live-verified):** Owner-isolation between two distinct owners (SC-4) was accepted by the operator without a live two-owner test — no second owner account was available. Isolation is verified by code inspection (per-owner volume keyed on owner UUID); re-run `/gsd-verify-work 04` to close live. See `04-UAT.md` Test 5 and `04-VERIFICATION.md` → Acknowledged Gaps.
+> **Security debt:** `/gsd-secure-phase 04` has not run — no `04-SECURITY.md` exists. Run before relying on this in production.
 
 **Deferred to a later milestone:**
 - Full AI/MCP suite — Coder Tasks, Coder's MCP server (`coder exp mcp`), in-workspace MCP servers (AI-01..04 superset)
@@ -100,6 +97,9 @@ A Coder server you can stand up, point at a real public URL, and trust with pers
 | Pin Coder image version, keep reference overridable | Production reproducibility without breaking upstream automations | ✓ Phase 1 — default `v2.33.8`, overridable via `CODER_REPO`/`CODER_VERSION` |
 | Workspace home volume keyed on workspace UUID with `ignore_changes = [name]` | Rename-safe persistence without freezing all attributes (code-review WR-02) | ✓ Phase 3 |
 | Narrow agent init-script `host.docker.internal` rewrite to the access-URL host only | Avoid global loopback rewrite in the init script (code-review WR-01) | ✓ Phase 3 |
+| Neutral-mount + symlink for Claude config (not `CLAUDE_CONFIG_DIR`) | `CLAUDE_CONFIG_DIR` is undocumented/unimplemented (issue #25762 open); symlinks into a shared `~/.claude-shared` volume are reliable (D-01) | ✓ Phase 4 |
+| Per-owner Claude volume keyed on owner UUID, auto-created/unmanaged (no `docker_volume` resource, no `prevent_destroy`) | UUID keying is rename-safe (D-03); making the volume unmanaged lets it outlive any single workspace so `coder delete` never errors (UAT G2 fix) while still persisting auth | ✓ Phase 4 |
+| Migrate-then-symlink startup guards (`[ ! -L ] && [ -e ]`, `cp -f` before `{}` placeholder) | Upgrade path must convert pre-existing real `~/.claude`/`~/.claude.json` without losing auth (CR-01/WR-01) | ✓ Phase 4 — UAT live-verified, no data loss |
 
 ## Current State
 
@@ -109,7 +109,9 @@ The scaffold delivers: a hardened `compose.yaml` (pinned Coder `v2.33.8` + `post
 
 **Codebase:** 8 source files — `compose.yaml`, `.env.example`, `README.md`, `CLAUDE.md`, `scripts/backup.sh`, `scripts/restore.sh`, `templates/docker/main.tf`, `.gitignore`. Stack: Docker Compose, Postgres 17, Coder `v2.33.8`, Terraform (kreuzwerker/docker ~> 4.4, coder/coder ~> 2.18).
 
-**Known deferred at close (acknowledged, not blocking):** Phases 1 & 2 verification status is `human_needed` — functionally complete and in use, but formal UAT was not recorded (see STATE.md → Deferred Items). Phase 3 UAT passed (SC-1..SC-5).
+**Shipped:** v1.1 Portable Claude Code Setup — 2026-06-18 (Phase 4, 3 plans, CLAUDE-01..07). The Docker template now installs Claude Code (module 5.2.0) and mounts a per-owner shared volume so auth, settings, skills, and user-scoped MCP servers carry across every workspace. Live UAT confirmed auth persistence A→B, both upgrade-path data-loss guards, and idempotency (4/5 tests). Two deploy-blocking defects found and fixed during UAT (invalid module args blocking `templates push`; volume `prevent_destroy` blocking `coder delete`). Beyond scope, the workspace image now builds Node.js from a Dockerfile and seeds GSD into the shared `~/.claude`.
+
+**Known deferred at close (acknowledged, not blocking):** Phases 1 & 2 verification status is `human_needed` — functionally complete and in use, but formal UAT was not recorded. Phase 4 owner-isolation (SC-4) accepted as an acknowledged gate (no second owner account); `/gsd-secure-phase 04` not yet run (see STATE.md → Deferred Items).
 
 **Next milestone (v2 — not yet planned):** AI/MCP integration (AI-01..04) and quality-of-life items (QOL-01..03). Run `/gsd-new-milestone` to scope.
 
@@ -131,4 +133,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-17 — milestone v1.1 (Portable Claude Code Setup) started*
+*Last updated: 2026-06-18 — Phase 04 complete; milestone v1.1 (Portable Claude Code Setup) 100% complete*

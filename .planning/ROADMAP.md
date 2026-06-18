@@ -20,7 +20,7 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 
 ### v1.1 Portable Claude Code Setup
 
-- [ ] **Phase 4: Portable Claude Config** - Wire claude-code module + per-owner shared volume into the Docker template; ship operator runbook — gap closure 04-03 executed; code review found+fixed data-loss BLOCKER (CR-01); re-verification human_needed (5/5 by code, 5 live UAT items in 04-UAT.md)
+- [x] **Phase 4: Portable Claude Config** - Wire claude-code module + per-owner shared volume into the Docker template; ship operator runbook — gap closure 04-03 executed; code review found+fixed data-loss BLOCKER (CR-01); re-verification human_needed (5/5 by code, 5 live UAT items in 04-UAT.md) (completed 2026-06-18)
 
 ## Phase Details
 
@@ -57,4 +57,4 @@ Full details: [`milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md)
 | 1. Compose Hardening & Configuration | v1.0 | 2/2 | Complete | 2026-06-17 |
 | 2. Backup & Restore Scripts | v1.0 | 3/3 | Complete | 2026-06-17 |
 | 3. Docker Workspace Template | v1.0 | 2/2 | Complete | 2026-06-17 |
-| 4. Portable Claude Config | v1.1 | 3/3 | Awaiting human verification | — |
+| 4. Portable Claude Config | v1.1 | 3/3 | Complete    | 2026-06-18 |

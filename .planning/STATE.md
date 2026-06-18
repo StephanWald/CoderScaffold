@@ -2,39 +2,39 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Portable Claude Code Setup
-status: awaiting_human_verification
-stopped_at: Phase 04 UAT paused (partial). Live deploy testing fixed 2 deploy-blocking defects (G1 invalid module args; G2 volume prevent_destroy blocked workspace deletion) + added Node-in-image and GSD install. Functional UAT Tests 1-5 not yet run; deploy path now works.
-last_updated: "2026-06-17T21:30:00Z"
-last_activity: 2026-06-17 -- Phase 04 UAT session: deploy hardened (module args, volume deletion), Node+GSD added; functional Tests 1-5 still pending
+status: milestone_complete
+stopped_at: "Phase 04 complete — UAT 4/5 passed live (auth A→B, upgrade-path guards, idempotency); owner-isolation accepted as acknowledged gate. Milestone v1.1 100% complete."
+last_updated: "2026-06-18T04:04:03.625Z"
+last_activity: 2026-06-18
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
   completed_plans: 3
-  percent: 95
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-17)
+See: .planning/PROJECT.md (updated 2026-06-18)
 
 **Core value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
-**Current focus:** Phase 04 — portable-claude-config
+**Current focus:** Milestone v1.1 complete — ready to archive (`/gsd-complete-milestone v1.1`) or scope v2 (`/gsd-new-milestone`)
 
 ## Current Position
 
-Phase: 04 (portable-claude-config) — AWAITING HUMAN VERIFICATION (UAT partial)
-Plan: 3 of 3 (all plans done; gap closure 04-03 done)
-Status: UAT paused. Live deploy hardened — fixed G1 (invalid module args blocking push) + G2 (volume prevent_destroy blocking workspace delete); added Node-in-image + GSD install (out-of-scope enhancements). Structural wiring validated live (symlinks, volume mount, claude + GSD install). Functional Tests 1-5 (auth A→B, upgrade-path migration, idempotency, owner isolation) NOT done. Resume: /gsd-verify-work 04.
-Last activity: 2026-06-17 -- Phase 04 UAT session: deploy fixes (G1/G2) + Node/GSD; Tests 1-5 pending
+Phase: 04 — COMPLETE (last phase of milestone v1.1)
+Plan: 3 of 3 (all done)
+Status: Milestone v1.1 100% complete. Phase 04 UAT: 4/5 functional tests passed live (auth persistence A→B, upgrade-path directory guard CR-01, content-preservation JSON WR-01, idempotency). Owner-isolation (Test 5/SC-4) accepted as an acknowledged gate — no second owner account available. Two deploy blockers fixed during UAT (G1 module args, G2 volume prevent_destroy). Security debt: /gsd-secure-phase 04 not run.
+Last activity: 2026-06-18 -- Phase 04 marked complete; milestone v1.1 done
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 9
 - Average duration: ~90 min
 - Total execution time: ~1.5 hours
 
@@ -45,6 +45,7 @@ Last activity: 2026-06-17 -- Phase 04 UAT session: deploy fixes (G1/G2) + Node/G
 | 01-compose-hardening-configuration | 2 | ~135min | ~67min |
 | 02 | 3 | - | - |
 | 03 | 2 | - | - |
+| 04 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -115,14 +116,20 @@ None. All planned work for milestone v1.1 is complete.
 | QoL | Dotfiles module, backup retention, workspace resource limits (QOL-01..03) | v2 | 2026-06-16 |
 | verification | Phase 01 — 01-VERIFICATION.md status human_needed (functional; formal UAT not recorded) | acknowledged at v1.0 close | 2026-06-17 |
 | verification | Phase 02 — 02-VERIFICATION.md status human_needed (functional; formal UAT not recorded) | acknowledged at v1.0 close | 2026-06-17 |
+| verification | Phase 04 — owner-isolation (SC-4) not live-tested; no second owner account. Verified by code inspection only. Re-run `/gsd-verify-work 04` to close live. | acknowledged gate at phase close | 2026-06-18 |
+| security | Phase 04 — `/gsd-secure-phase 04` not run; no 04-SECURITY.md. Run before production reliance. | open debt | 2026-06-18 |
 
 ## Session Continuity
 
-Last session: 2026-06-17T18:41:00Z
-Stopped at: Completed 04-03-PLAN.md (gap closure: CR-01, WR-01, WR-03 — all phase 04 gaps closed)
+Last session: 2026-06-18
+Stopped at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
 Resume file: None
 
 ## Operator Next Steps
 
-Milestone v1.1 (Portable Claude Code Setup) is COMPLETE. All 3 plans executed; all verification gaps (CR-01, WR-01, WR-03) closed.
-Next: push templates/docker to Coder server and validate live behavior (upgrade-path smoke test: workspace with real ~/.claude dir ends with symlink after template apply + restart).
+Milestone v1.1 (Portable Claude Code Setup) is COMPLETE — Phase 04 verified via live UAT (4/5 passed; owner-isolation an acknowledged gate). 
+Next options:
+- `/gsd-complete-milestone v1.1` — archive the milestone and prepare for the next.
+- `/gsd-secure-phase 04` — clear the outstanding security review debt.
+- `/gsd-verify-work 04` — close the owner-isolation gate once a second owner account exists.
+- `/gsd-new-milestone` — scope v2 (AI/MCP suite AI-01..04, QoL QOL-01..03).
