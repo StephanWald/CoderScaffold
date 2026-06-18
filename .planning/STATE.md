@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-18 — Completed quick task 260618-6ho: bulk coder templates push script with login check
+Last activity: 2026-06-18 — Completed quick task 260618-h3d: maintainer .gitignore + devcontainer.json + new CoderScaffold workspace template
 
 ## Performance Metrics
 
@@ -113,6 +113,7 @@ None. All planned work for milestone v1.1 is complete.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260618-6ho | Bulk `coder templates push` script with login check (scripts/push-templates.sh) | 2026-06-18 | b9c10ef | [260618-6ho-create-coder-template-push-all-script-wi](./quick/260618-6ho-create-coder-template-push-all-script-wi/) |
+| 260618-h3d | Maintainer `.gitignore` + `devcontainer.json` + new `templates/coderscaffold/` workspace template (clones StephanWald/CoderScaffold) | 2026-06-18 | dd53a2e | [260618-h3d-maintainer-gitignore-devcontainer-json-n](./quick/260618-h3d-maintainer-gitignore-devcontainer-json-n/) |
 
 ## Deferred Items
 
