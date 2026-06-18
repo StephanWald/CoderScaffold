@@ -4,19 +4,11 @@
 
 A Docker Compose–based, production-ready scaffold for self-hosting [Coder](https://coder.com) (the self-hosted cloud development environment platform). It refines the upstream Docker install (https://coder.com/docs/install/docker) into a deployable environment with durable Postgres persistence, database backup/restore tooling, environment-driven configuration, and a starter workspace template that gives developers VSCode (code-server) and IntelliJ (JetBrains Gateway) dev containers. (Broader AI/MCP integration — Coder Tasks, Coder's MCP server — remains planned for a later milestone.)
 
-**Shipped: v1.0 MVP (2026-06-17)** — all 22 v1 requirements delivered across 3 phases. See `.planning/MILESTONES.md`.
+**Shipped: v1.0 MVP (2026-06-17)** — all 22 v1 requirements delivered across 3 phases. **Shipped: v1.1 Portable Claude Code Setup (2026-06-18)** — CLAUDE-01..07 delivered in Phase 4. See `.planning/MILESTONES.md`.
 
-## Current Milestone: v1.1 Portable Claude Code Setup
+## Next Milestone: v2 (not yet planned)
 
-**Goal:** Maintain Claude Code once — auth, settings, skills, MCP servers — and reuse it across every workspace, regardless of which template built it.
-
-**Target features:**
-- `coder/claude-code` module wired into the Docker workspace template (install + enable Claude Code)
-- Per-owner shared Docker volume covering the full config surface — both `~/.claude/` and `~/.claude.json` — so auth, settings, skills, and user-scoped MCP servers all carry across workspaces
-- Nested mount layering: per-workspace home volume + per-owner Claude config volume
-- First-run login flow (empty volume → authenticate once → persists and shares)
-- Reusable pattern documented so any future template inherits the same one Claude setup
-- README operator section: seeding, auth, and the concurrent-workspace write caveat
+No active milestone — v1.1 shipped 2026-06-18. The next cycle is expected to cover the full AI/MCP suite (Coder Tasks, `coder exp mcp` server, in-workspace MCP servers — AI-01..04) and quality-of-life items (dotfiles, backup retention, workspace resource limits — QOL-01..03). Run `/gsd-new-milestone` to scope it.
 
 ## Core Value
 
@@ -133,4 +125,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-18 — Phase 04 complete; milestone v1.1 (Portable Claude Code Setup) 100% complete*
+*Last updated: 2026-06-18 after v1.1 milestone (Portable Claude Code Setup) archived*

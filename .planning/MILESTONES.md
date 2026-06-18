@@ -1,5 +1,24 @@
 # Milestones
 
+## v1.1 Portable Claude Code Setup (Shipped: 2026-06-18)
+
+**Phases completed:** 1 phases, 3 plans, 2 tasks
+
+**Key accomplishments:**
+
+- Per-owner Docker volume (UUID-keyed, prevent_destroy) mounted at a neutral path with startup_script symlinks wiring ~/.claude and ~/.claude.json, plus the claude-code module v5.2.0 and anthropic_api_key variable — all wrapped in an inline [REUSABLE] drop-in block.
+- Added `### Claude Code` subsection to README Workspace Template section covering first-run OAuth login, the four shared items (auth/settings/skills/MCP servers), per-owner volume seeding, concurrent-write caveat, and manual orphaned-volume cleanup.
+- Idempotent migrate-before-delete guards added to startup_script (CR-01, WR-01) and README cleanup comment corrected to state permanent data destruction (WR-03) — closes all remaining phase 04 verification gaps.
+
+**Known deferred items at close:** 2 (see STATE.md Deferred Items)
+
+- Phase 04 owner-isolation (SC-4 / UAT Test 5) — verified by code inspection only; not live-tested (no second owner account available). 4/5 UAT checks passed live. Re-run `/gsd-verify-work 04` to close.
+- Phase 04 security review — `/gsd-secure-phase 04` not run; no 04-SECURITY.md. Run before production reliance.
+
+**Verification note:** Live deploy UAT surfaced and fixed two deploy-blocking template defects that static review had passed — G1 (unsupported `order`/`agent_name` module args blocked `coder templates push`) and G2 (`prevent_destroy` on the per-owner volume made workspaces undeletable). Both resolved inline during the UAT session.
+
+---
+
 ## v1.0 MVP (Shipped: 2026-06-17)
 
 **Phases completed:** 3 phases, 7 plans, 12 tasks

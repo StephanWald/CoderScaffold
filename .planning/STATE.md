@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Portable Claude Code Setup
-status: milestone_complete
-stopped_at: "Phase 04 complete — UAT 4/5 passed live (auth A→B, upgrade-path guards, idempotency); owner-isolation accepted as acknowledged gate. Milestone v1.1 100% complete."
-last_updated: "2026-06-18T04:04:03.625Z"
-last_activity: 2026-06-18
+status: Awaiting next milestone
+stopped_at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
+last_updated: "2026-06-18T04:15:34.156Z"
+last_activity: 2026-06-18 — Milestone v1.1 completed and archived
 progress:
   total_phases: 1
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-18)
 
 **Core value:** A Coder server you can stand up, point at a real public URL, and trust with persistent data — Postgres state survives container recreation and can be backed up/restored.
-**Current focus:** Milestone v1.1 complete — ready to archive (`/gsd-complete-milestone v1.1`) or scope v2 (`/gsd-new-milestone`)
+**Current focus:** Milestone v1.1 archived (2026-06-18). Planning next milestone — scope v2 with `/gsd-new-milestone`.
 
 ## Current Position
 
-Phase: 04 — COMPLETE (last phase of milestone v1.1)
-Plan: 3 of 3 (all done)
-Status: Milestone v1.1 100% complete. Phase 04 UAT: 4/5 functional tests passed live (auth persistence A→B, upgrade-path directory guard CR-01, content-preservation JSON WR-01, idempotency). Owner-isolation (Test 5/SC-4) accepted as an acknowledged gate — no second owner account available. Two deploy blockers fixed during UAT (G1 module args, G2 volume prevent_destroy). Security debt: /gsd-secure-phase 04 not run.
-Last activity: 2026-06-18 -- Phase 04 marked complete; milestone v1.1 done
+Phase: Milestone v1.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-18 — Milestone v1.1 completed and archived
 
 ## Performance Metrics
 
@@ -127,9 +127,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-Milestone v1.1 (Portable Claude Code Setup) is COMPLETE — Phase 04 verified via live UAT (4/5 passed; owner-isolation an acknowledged gate). 
-Next options:
-- `/gsd-complete-milestone v1.1` — archive the milestone and prepare for the next.
-- `/gsd-secure-phase 04` — clear the outstanding security review debt.
-- `/gsd-verify-work 04` — close the owner-isolation gate once a second owner account exists.
-- `/gsd-new-milestone` — scope v2 (AI/MCP suite AI-01..04, QoL QOL-01..03).
+- Start the next milestone with /gsd-new-milestone
