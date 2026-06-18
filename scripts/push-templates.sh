@@ -113,8 +113,9 @@ failed=()   # names of templates that failed to push
 pushed=()   # names of templates successfully pushed
 found_any=0 # becomes 1 when at least one subdir with a .tf file is found
 
-for dir in "${PROJECT_ROOT}/templates/*/"; do
-  # Guard: skip if dir does not exist (handles the no-match literal-glob case)
+for dir in "${PROJECT_ROOT}"/templates/*/; do
+  # Guard: skip if dir does not exist (handles the no-match literal-glob case,
+  # where the unmatched glob is left verbatim as templates/*/)
   [[ -d "${dir}" ]] || continue
 
   # Strip trailing slash; get basename for the template name
