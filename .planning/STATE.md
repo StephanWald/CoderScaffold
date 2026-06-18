@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-18 — Milestone v1.1 completed and archived
+Last activity: 2026-06-18 — Completed quick task 260618-6ho: bulk coder templates push script with login check
 
 ## Performance Metrics
 
@@ -107,6 +107,12 @@ None. All planned work for milestone v1.1 is complete.
 
 - Phase 3: Docker socket GID varies by host distro — RESOLVED in templates/docker/main.tf commented block (TPL-05/D-08)
 - Phase 3: `host.docker.internal` handling for workspace agent — RESOLVED via host.docker.internal/host-gateway + replace() entrypoint in templates/docker/main.tf (TPL-06/D-09)
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260618-6ho | Bulk `coder templates push` script with login check (scripts/push-templates.sh) | 2026-06-18 | b9c10ef | [260618-6ho-create-coder-template-push-all-script-wi](./quick/260618-6ho-create-coder-template-push-all-script-wi/) |
 
 ## Deferred Items
 
