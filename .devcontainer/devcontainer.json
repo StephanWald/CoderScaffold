@@ -1,0 +1,35 @@
+// CoderScaffold maintainer devcontainer.
+// Equips a maintainer of THIS repo with: Docker Compose, Terraform (for template
+// validation), shellcheck (for script linting), and Claude Code (AI assistant).
+//
+// The javascript-node base image is kept for its Node.js/npm, which the GSD
+// toolchain (npx @opengsd/gsd-core) requires.
+//
+// Feature major-version pins (":1") below resolve to a specific patch at build
+// time. The lock file only covers claude-code today (1.0.5). docker-outside-of-docker
+// and terraform feature versions are best-effort and should be verified on first
+// devcontainer rebuild. Run `devcontainer upgrade` or inspect the rebuilt lock to
+// confirm resolved versions before relying on them in production.
+{
+	"name": "CoderScaffold Maintainer",
+	"image": "mcr.microsoft.com/devcontainers/javascript-node:1-18-bullseye",
+
+	"features": {
+		// Keep claude-code:1.0 EXACTLY — devcontainer-lock.json pins it to 1.0.5;
+		// bumping this key would invalidate the lock.
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+		// Docker CLI that talks to the host daemon so `docker compose` works.
+		// Preferred over docker-in-docker for a maintainer box driving compose on the host.
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+		// Terraform/OpenTofu + tooling for `terraform fmt`/`validate` on templates/.
+		"ghcr.io/devcontainers/features/terraform:1": {}
+	},
+
+	// Install shellcheck for bash script linting. The terraform feature does not
+	// include it. Non-fatal: if apt fails (e.g. offline build), continue anyway.
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y shellcheck || echo 'WARN: shellcheck install failed; continuing'",
+
+	"mounts": [
+		"source=claude-code-config,target=/home/node/.claude,type=volume"
+	]
+}
