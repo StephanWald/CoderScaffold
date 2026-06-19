@@ -395,6 +395,75 @@ or via a separate cleanup job (deferred to QOL-02 in v2).
 
 ---
 
+## Updating Coder
+
+The Coder server is a **pinned, prebuilt image** (`CODER_VERSION` in `.env`, default in
+`compose.yaml`). Updating is a version-pin bump followed by a pull + recreate. Your Postgres data
+lives in the persistent `coder_pgdata` volume and is **not** touched — the new server runs its
+database migrations automatically on first start. Only the control plane restarts briefly; running
+workspaces are separate containers and keep running.
+
+> **Stable vs mainline:** Coder ships a *stable* track (e.g. `v2.33.x`) and a *mainline* track
+> (e.g. `v2.34.x`). Prefer stable in production. Never use `:latest` — it can't be rolled back.
+
+### With the script (recommended)
+
+`scripts/update-coder.sh` backs up the database first (aborting if the backup fails), pins the new
+version in `.env`, pulls, recreates, and waits for the healthcheck:
+
+```bash
+# See what you're on and what's available
+./scripts/update-coder.sh --check
+
+# Update to a specific version (backs up the DB first)
+./scripts/update-coder.sh v2.33.9
+
+# Optionally re-push templates afterwards, or preview without changing anything
+./scripts/update-coder.sh v2.33.9 --push-templates
+./scripts/update-coder.sh v2.33.9 --dry-run
+```
+
+Like the other scripts it is non-interactive and returns meaningful exit codes (`0` success, `1`
+on bad usage / failed backup / failed pull / unhealthy server), so it is safe to wrap in
+automation.
+
+### Manually
+
+```bash
+# 1. Back up first
+./scripts/backup.sh
+
+# 2. Pin the new version in .env
+#    CODER_VERSION=v2.33.9
+
+# 3. Pull and recreate (database is unchanged)
+docker compose pull coder
+docker compose up -d
+
+# 4. Confirm health and version
+docker compose ps                      # coder should be (healthy)
+docker compose exec coder coder version
+```
+
+### Updating the committed default
+
+`.env` (gitignored) drives your running instance. To update the value the repo ships, also bump the
+`CODER_VERSION` default in `compose.yaml` and the example in `.env.example`, then commit.
+
+### Rollback
+
+If the new version misbehaves, set `CODER_VERSION` back to the previous value and
+`docker compose up -d`. If the upgrade already ran a forward-only DB migration, a clean downgrade
+also requires restoring the pre-update dump:
+
+```bash
+./scripts/restore.sh ./backups/coder-<timestamp>.dump
+```
+
+(The update script prints the backup path and a `PREVIOUS=` value to make this straightforward.)
+
+---
+
 ## Workspace Template
 
 The `templates/docker/` directory contains a Terraform template that provisions Coder workspaces
