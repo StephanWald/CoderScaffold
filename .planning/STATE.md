@@ -119,6 +119,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260619-a5w | Fix SSH `Host key verification failed` for private-repo clones in java-fullstack (bake forge known_hosts + accept-new); README private-repo SSH guide | 2026-06-19 | a69f0d2 | [260619-a5w-fix-ssh-host-key-verification-for-privat](./quick/260619-a5w-fix-ssh-host-key-verification-for-privat/) |
 | 260619-b1h | Enable subdomain apps: README guide — local macOS nip.io recipe + production Apache wildcard reverse-proxy vhost (compose/.env already forward the vars) | 2026-06-19 | 1d51959 | [260619-b1h-document-enabling-subdomain-apps-local-m](./quick/260619-b1h-document-enabling-subdomain-apps-local-m/) |
 | 260619-bix | Add `scripts/update-coder.sh` (--check, backup→pin→pull→recreate→health-gate, --push-templates/--dry-run) + README "Updating Coder" section; latest stable v2.33.9 | 2026-06-19 | f66b9f8 | [260619-bix-add-scripts-update-coder-sh-backup-then-pul](./quick/260619-bix-add-scripts-update-coder-sh-backup-then-pul/) |
+| 260619-ej7 | Wire Google OIDC login into compose + .env.example: opt-in `CODER_OIDC_*` vars (issuer/client/scopes), disabled by default (empty client id), `basis.cloud` email-domain restriction | 2026-06-19 | 79ef750 | [260619-ej7-wire-google-oidc-login-into-coder-compos](./quick/260619-ej7-wire-google-oidc-login-into-coder-compos/) |
 
 ## Deferred Items
 
