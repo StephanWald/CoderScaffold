@@ -331,6 +331,38 @@ Once the workspace agent connects (status shows **Connected**), two app buttons 
 - **IntelliJ IDEA** — opens a JetBrains Gateway URL that connects your local Gateway client to
   an IntelliJ IDEA server running inside the workspace container
 
+### Java full-stack template
+
+The `templates/java-fullstack/` directory contains a universal workspace template for a stack of
+**Java/Spring Boot backends** and **JavaScript/TypeScript UIs** (e.g. [webforJ](https://webforj.com)).
+On top of everything the `docker` template provides (persistent home, VS Code, IntelliJ IDEA,
+Claude Code with the webforJ MCP server preconfigured, GSD), it adds:
+
+- **A selectable JDK** (build-time) — prompted at workspace creation:
+  - Adoptium (Temurin) **21** or **25** — LTS
+  - Oracle JDK **21** or **25** — LTS (downloaded under Oracle's No-Fee Terms; no login)
+- **Apache Maven** — pinned `3.9.16` (overridable via the `maven_version` variable)
+- **Node.js LTS** — `node` + `npm`/`npx` for JS/TS development
+- **An optional Git repository** — prompted at creation; when set, it is cloned into the workspace
+  on first start and both editors open that checkout (otherwise they open `/home/coder`)
+
+The JDK is installed system-wide (`/opt/java/default`, registered via `update-alternatives`);
+`JAVA_HOME`/`MAVEN_HOME` are exported for both login and agent shells. Because the JDK choice is
+build-time, each selection produces its own cached image and changing it rebuilds the workspace.
+
+```bash
+# Push it (or use ./scripts/push-templates.sh to push every template under templates/)
+coder templates push java-fullstack --directory templates/java-fullstack/ -y
+
+# Server-side display metadata (not Terraform-managed — set after the first push)
+coder templates edit java-fullstack \
+  --display-name "Java Full-Stack" \
+  --description "Java/Spring + JS/TS workspace: selectable JDK (Adoptium/Oracle 21/25), Maven, Node, VS Code, IntelliJ IDEA, optional git clone." \
+  --icon "/icon/java.svg"
+```
+
+At **Create Workspace** you are prompted for the **Git repository** (optional) and the **JDK**.
+
 ### Docker Socket Permissions
 
 If workspace provisioning fails with a permission error on `/var/run/docker.sock`, the `coder`
