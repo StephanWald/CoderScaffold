@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-18 — Completed quick task 260618-h3d: maintainer .gitignore + devcontainer.json + new CoderScaffold workspace template
+Last activity: 2026-06-19 — Completed quick task 260619-93j: preconfigure webforJ MCP server in workspace Claude config
 
 ## Performance Metrics
 
@@ -114,6 +114,7 @@ None. All planned work for milestone v1.1 is complete.
 |---|-------------|------|--------|-----------|
 | 260618-6ho | Bulk `coder templates push` script with login check (scripts/push-templates.sh) | 2026-06-18 | b9c10ef | [260618-6ho-create-coder-template-push-all-script-wi](./quick/260618-6ho-create-coder-template-push-all-script-wi/) |
 | 260618-h3d | Maintainer `.gitignore` + `devcontainer.json` + new `templates/coderscaffold/` workspace template (clones StephanWald/CoderScaffold) | 2026-06-18 | dd53a2e | [260618-h3d-maintainer-gitignore-devcontainer-json-n](./quick/260618-h3d-maintainer-gitignore-devcontainer-json-n/) |
+| 260619-93j | Preconfigure webforJ MCP server (`https://mcp.webforj.com/`) in workspace Claude config (both templates' startup_script) | 2026-06-19 | 4bd4d3b | [260619-93j-preconfigure-claude-code-in-workspace-co](./quick/260619-93j-preconfigure-claude-code-in-workspace-co/) |
 
 ## Deferred Items
 
