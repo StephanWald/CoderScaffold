@@ -363,6 +363,25 @@ coder templates edit java-fullstack \
 
 At **Create Workspace** you are prompted for the **Git repository** (optional) and the **JDK**.
 
+#### Cloning a private repository (SSH)
+
+For an SSH URL (`git@github.com:owner/repo.git`), Coder authenticates with a **per-user SSH key it
+manages for you** — you do **not** add your own key to the workspace. Two things make a private
+clone work:
+
+1. **Host key verification** — handled by the image: the common forges (GitHub, GitLab, Bitbucket,
+   Azure DevOps) are pre-seeded into the system `known_hosts`, and any other host is trusted on
+   first use (`StrictHostKeyChecking=accept-new`). This is what fixes the
+   `Host key verification failed` error on a fresh workspace.
+2. **Authorize Coder's key with your Git host** — copy the public key Coder prints (or run
+   `coder publickey`) and add it once at <https://github.com/settings/ssh/new> (or your host's
+   equivalent). Because the key is stored centrally by Coder, this covers all your workspaces.
+
+The first-start clone runs **before** you've had a chance to register the key, so for a private repo
+the clone may fail the first time (the startup step is non-fatal and idempotent). After adding the
+key, either **restart the workspace** (the clone retries because the directory doesn't exist yet) or
+just run the `git clone` manually once.
+
 ### Docker Socket Permissions
 
 If workspace provisioning fails with a permission error on `/var/run/docker.sock`, the `coder`

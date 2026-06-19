@@ -88,4 +88,27 @@ RUN printf '%s\n' \
       > /etc/profile.d/10-java-maven.sh \
  && chmod 0644 /etc/profile.d/10-java-maven.sh
 
+# ── Git over SSH: host keys for common forges + accept-new fallback ──────────
+# Without this, an SSH clone (e.g. git@github.com:owner/repo.git, including the
+# optional git_repo parameter) fails with "Host key verification failed": a fresh
+# container has no known_hosts entry, and the non-interactive ssh invoked by
+# `coder gitssh` refuses unverified hosts. Pre-seed the well-known forge keys into
+# the SYSTEM known_hosts (outside the volume-shadowed /home/coder, so it always
+# applies), and set StrictHostKeyChecking=accept-new globally so any other host
+# (self-hosted GitLab, etc.) is trusted-on-first-use instead of rejected.
+#
+# NOTE: this only fixes HOST verification. Authenticating to a PRIVATE repo still
+# requires the Coder-managed SSH public key to be registered with your Git host
+# (Coder prints it; add it at https://github.com/settings/ssh/new). See README.
+RUN set -eux; \
+    mkdir -p /etc/ssh /etc/ssh/ssh_config.d; \
+    for h in github.com gitlab.com bitbucket.org ssh.dev.azure.com; do \
+      ssh-keyscan -t rsa,ecdsa,ed25519 "$h" >> /etc/ssh/ssh_known_hosts 2>/dev/null \
+        || echo "WARN: ssh-keyscan $h failed; continuing" >&2; \
+    done; \
+    chmod 0644 /etc/ssh/ssh_known_hosts; \
+    printf '%s\n' 'Host *' '    StrictHostKeyChecking accept-new' \
+      > /etc/ssh/ssh_config.d/10-accept-new.conf; \
+    chmod 0644 /etc/ssh/ssh_config.d/10-accept-new.conf
+
 USER coder
