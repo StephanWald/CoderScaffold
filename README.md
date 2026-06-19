@@ -142,8 +142,112 @@ proxy (nginx, Caddy, Traefik, HAProxy, etc.) to meet these requirements.
 > access and the DERP relay. Signs of a misconfigured proxy: terminals open and immediately
 > close; log streaming shows no output.
 
-No bundled proxy configuration is included — add your own Caddy, nginx, or Traefik config using
-the requirements above.
+No proxy configuration is shipped as a standalone file, but a ready-to-adapt **Apache** vhost is
+provided under [Subdomain apps](#subdomain-apps-shareable-links) below. For nginx/Caddy/Traefik,
+satisfy the requirements above.
+
+---
+
+## Subdomain apps (shareable links)
+
+By default Coder serves workspace apps under a **path prefix**
+(`…/apps/<app>/proxy/<port>/`). Apps that emit **absolute** URLs — most Spring Boot / webforJ
+servers and many SPA dev servers — break under a path prefix, because the prefix is missing from
+those `/assets/app.js`-style references. **Subdomain apps** fix this by serving each app at the
+**root** of its own hostname, so absolute URLs resolve correctly and links are shareable.
+
+Enable it by setting both variables in `.env`, then `docker compose up -d`:
+
+```bash
+CODER_ACCESS_URL=https://coder.example.com
+CODER_WILDCARD_ACCESS_URL=*.coder.example.com   # dedicated subdomain — NOT a top-level domain
+```
+
+`compose.yaml` already forwards both variables to the server, so no Compose edit is needed. Coder
+then generates app URLs like
+`https://8080--main--my-workspace--stephanwald.coder.example.com/`.
+
+> Use a **dedicated** wildcard (`*.coder.example.com`), never `*.example.com`: browsers reject
+> cookies scoped to a parent domain that hosts other apps.
+
+### Local testing on macOS (no real domain)
+
+Subdomain apps need a wildcard hostname that resolves for **both** your Mac browser **and** the
+workspace container. `127.0.0.1` won't work — inside the container it is the container's own
+loopback. Use your Mac's **LAN IP** via the free wildcard-DNS service `nip.io` (any
+`*.<ip>.nip.io` resolves to `<ip>`):
+
+```bash
+# Find your LAN IP (e.g. 192.168.1.50)
+ipconfig getifaddr en0
+
+# In .env — substitute your dashed LAN IP; keep :7080 on both
+CODER_ACCESS_URL=http://192-168-1-50.nip.io:7080
+CODER_WILDCARD_ACCESS_URL=*.192-168-1-50.nip.io:7080
+
+docker compose up -d
+```
+
+The LAN IP is reachable from both the browser and the workspace container, and it sidesteps the
+template's `127.0.0.1 → host.docker.internal` rewrite (which only triggers on a literal loopback
+access URL). Plain HTTP is fine for local testing. Swap in your real domain when you move behind
+the proxy — the mechanism is identical.
+
+> If your LAN IP changes (DHCP), update both values and re-run `docker compose up -d`.
+
+### Production: Apache reverse proxy
+
+Apache must terminate a **wildcard** TLS certificate and forward the original `Host` header so
+Coder can route app subdomains. This vhost satisfies the
+[reverse-proxy contract](#reverse-proxy-contract):
+
+```apache
+# Enable modules: a2enmod proxy proxy_http ssl headers
+# Requires Apache >= 2.4.47 for `upgrade=any` (forwards WebSocket *and* DERP in one directive).
+
+<VirtualHost *:443>
+    ServerName  coder.example.com
+    ServerAlias *.coder.example.com          # wildcard — workspace app subdomains
+
+    SSLEngine on
+    # Certificate MUST cover *.coder.example.com (Let's Encrypt wildcard via DNS-01)
+    SSLCertificateFile    /etc/letsencrypt/live/coder.example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/coder.example.com/privkey.pem
+
+    ProxyPreserveHost On                      # forward Host verbatim (app subdomain routing)
+    RequestHeader set X-Forwarded-Proto "https"
+
+    ProxyRequests Off
+    # upgrade=any forwards WebSocket *and* Coder's `Upgrade: derp` relay protocol.
+    ProxyPass        / http://127.0.0.1:7080/ upgrade=any
+    ProxyPassReverse / http://127.0.0.1:7080/
+</VirtualHost>
+
+# Redirect HTTP → HTTPS, preserving the (possibly wildcard) host
+<VirtualHost *:80>
+    ServerName  coder.example.com
+    ServerAlias *.coder.example.com
+    RewriteEngine On
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</VirtualHost>
+```
+
+Also required in production:
+
+- **DNS:** an `A`/`AAAA` record for `coder.example.com` **and** a wildcard `*.coder.example.com`,
+  both pointing at the proxy host.
+- **Upstream address:** `http://127.0.0.1:7080` assumes Apache runs on the **same host** as the
+  stack (Compose publishes `7080` on the host). If Apache runs in a container on the Compose
+  network instead, use `http://coder:7080`.
+- On Apache **< 2.4.47**, replace `upgrade=any` with `mod_proxy_wstunnel` rewrite rules
+  (`a2enmod proxy_wstunnel rewrite`) that `[P]`-proxy `Upgrade: websocket` requests to
+  `ws://127.0.0.1:7080/` — but the DERP relay needs the newer `upgrade=any`, so prefer upgrading
+  Apache.
+
+> **First-class app links:** once the wildcard is set, the existing app buttons (VS Code, etc.)
+> automatically switch to subdomain URLs. To give your **own** server (e.g. a webforJ app on
+> `8080`) its own subdomain button, add a `coder_app` with `subdomain = true` to the template
+> rather than tunneling through code-server's `/proxy/<port>/`.
 
 ---
 
