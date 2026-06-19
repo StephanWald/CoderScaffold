@@ -14,6 +14,18 @@ services:
       # or 127.0.0.1 for non-Docker templates!
       CODER_ACCESS_URL: "${CODER_ACCESS_URL:-http://127.0.0.1:7080}" # CFG-03
       CODER_WILDCARD_ACCESS_URL: "${CODER_WILDCARD_ACCESS_URL:-}" # CFG-04; empty = wildcard apps disabled (quickstart)
+      # Google login via OIDC (opt-in). Coder only ENABLES OIDC when
+      # CODER_OIDC_CLIENT_ID is non-empty, so these defaults leave sign-in
+      # off and the zero-config quickstart unaffected. Drop real credentials
+      # into .env to activate Google sign-in (requires a reachable HTTPS
+      # CODER_ACCESS_URL — Google's redirect callback can't be 127.0.0.1).
+      CODER_OIDC_ISSUER_URL: "${CODER_OIDC_ISSUER_URL:-https://accounts.google.com}"
+      CODER_OIDC_CLIENT_ID: "${CODER_OIDC_CLIENT_ID:-}"          # empty = OIDC disabled
+      CODER_OIDC_CLIENT_SECRET: "${CODER_OIDC_CLIENT_SECRET:-}"  # sensitive; set in .env
+      CODER_OIDC_SCOPES: "${CODER_OIDC_SCOPES:-openid,profile,email}"
+      # Comma-separated allowed email domains. Restricts logins on the Coder
+      # side regardless of who owns the Google project; empty = allow any.
+      CODER_OIDC_EMAIL_DOMAIN: "${CODER_OIDC_EMAIL_DOMAIN:-basis.cloud}"
     healthcheck: # SRV-04; start_period covers Coder's DB-migration window
       test: ["CMD", "curl", "-f", "http://localhost:7080/healthz"]
       interval: 10s
