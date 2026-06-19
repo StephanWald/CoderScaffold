@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-19 — Completed quick task 260619-a5w: fix SSH host key verification for private-repo clones in java-fullstack
+Last activity: 2026-06-19 — Completed quick task 260619-b1h: document enabling subdomain apps (macOS nip.io recipe + Apache wildcard reverse proxy)
 
 ## Performance Metrics
 
@@ -117,6 +117,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260619-93j | Preconfigure webforJ MCP server (`https://mcp.webforj.com/`) in workspace Claude config (both templates' startup_script) | 2026-06-19 | 4bd4d3b | [260619-93j-preconfigure-claude-code-in-workspace-co](./quick/260619-93j-preconfigure-claude-code-in-workspace-co/) |
 | 260619-9ii | New `templates/java-fullstack/` template: build-time JDK selector (Adoptium/Oracle 21/25), optional git-clone param, Maven 3.9.16, Node LTS; image build live-verified | 2026-06-19 | f78975d | [260619-9ii-new-java-fullstack-workspace-template-op](./quick/260619-9ii-new-java-fullstack-workspace-template-op/) |
 | 260619-a5w | Fix SSH `Host key verification failed` for private-repo clones in java-fullstack (bake forge known_hosts + accept-new); README private-repo SSH guide | 2026-06-19 | a69f0d2 | [260619-a5w-fix-ssh-host-key-verification-for-privat](./quick/260619-a5w-fix-ssh-host-key-verification-for-privat/) |
+| 260619-b1h | Enable subdomain apps: README guide — local macOS nip.io recipe + production Apache wildcard reverse-proxy vhost (compose/.env already forward the vars) | 2026-06-19 | 1d51959 | [260619-b1h-document-enabling-subdomain-apps-local-m](./quick/260619-b1h-document-enabling-subdomain-apps-local-m/) |
 
 ## Deferred Items
 
