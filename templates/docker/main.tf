@@ -187,6 +187,28 @@ resource "coder_agent" "main" {
     # Symlink ~/.claude.json → shared file.
     ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
 
+    # ── webforJ MCP server — preconfigure in user-scope Claude config ─────────
+    # Registers the hosted webforJ MCP server (https://mcp.webforj.com/) under the
+    # top-level "mcpServers" key of the shared ~/.claude.json, so every workspace
+    # for this owner has it available out of the box. Merged with node (guaranteed
+    # present — Node.js is layered into the workspace image) so existing config and
+    # auth are preserved. Idempotent: re-asserts the entry on every start without
+    # duplicating. Non-fatal under set -e (WR-03 warn-and-continue): a missing node
+    # or a write failure must NEVER abort the startup_script — log and continue.
+    if command -v node >/dev/null 2>&1; then
+      CLAUDE_JSON="$CLAUDE_SHARED/dot-claude.json" node -e '
+        const fs = require("fs");
+        const f = process.env.CLAUDE_JSON;
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(f, "utf8") || "{}") || {}; } catch (e) {}
+        cfg.mcpServers = cfg.mcpServers || {};
+        cfg.mcpServers.webforj = { type: "http", url: "https://mcp.webforj.com/" };
+        fs.writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n");
+      ' || echo "WARN: could not register webforJ MCP server; continuing" >&2
+    else
+      echo "WARN: node not found; skipping webforJ MCP registration" >&2
+    fi
+
     # ── GSD (gsd-core) — install-once into the shared per-owner ~/.claude ────────
     # GSD installs under ~/.claude (skills, agents, gsd-core/bin), which is the
     # shared per-owner volume — so a single install persists across every one of
@@ -377,7 +399,7 @@ resource "docker_container" "workspace" {
     "/(https?://)(localhost|127\\.0\\.0\\.1)/",
     "$${1}host.docker.internal"
   )]
-  env        = ["CODER_AGENT_TOKEN=${coder_agent.main.token}"]
+  env = ["CODER_AGENT_TOKEN=${coder_agent.main.token}"]
 
   # Add host.docker.internal → host-gateway so the workspace agent can reach
   # the Docker host (= Coder server) on Linux. On Docker Desktop (Mac/Windows),
