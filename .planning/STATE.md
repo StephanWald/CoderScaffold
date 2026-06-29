@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-19 — Completed quick task 260619-bix: add scripts/update-coder.sh (backup→pull→recreate) + Updating Coder docs
+Last activity: 2026-06-29 — Completed quick task 260629-9k5: enable MemPalace by default in coderscaffold + java-fullstack workspace templates (CLI install + MCP wiring + GSD capability flip)
 
 ## Performance Metrics
 
@@ -120,6 +120,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260619-b1h | Enable subdomain apps: README guide — local macOS nip.io recipe + production Apache wildcard reverse-proxy vhost (compose/.env already forward the vars) | 2026-06-19 | 1d51959 | [260619-b1h-document-enabling-subdomain-apps-local-m](./quick/260619-b1h-document-enabling-subdomain-apps-local-m/) |
 | 260619-bix | Add `scripts/update-coder.sh` (--check, backup→pin→pull→recreate→health-gate, --push-templates/--dry-run) + README "Updating Coder" section; latest stable v2.33.9 | 2026-06-19 | f66b9f8 | [260619-bix-add-scripts-update-coder-sh-backup-then-pul](./quick/260619-bix-add-scripts-update-coder-sh-backup-then-pul/) |
 | 260619-ej7 | Wire Google OIDC login into compose + .env.example: opt-in `CODER_OIDC_*` vars (issuer/client/scopes), disabled by default (empty client id), `basis.cloud` email-domain restriction | 2026-06-19 | 79ef750 | [260619-ej7-wire-google-oidc-login-into-coder-compos](./quick/260619-ej7-wire-google-oidc-login-into-coder-compos/) |
+| 260629-9k5 | Enable MemPalace by default in `coderscaffold` + `java-fullstack` templates: system-wide `mempalace` CLI (/opt venv), MCP server registered in workspace Claude config (mirrors webforJ), guarded `mempalace init` post-clone, + GSD `mempalace.enabled` capability flip in config.json | 2026-06-29 | e459f20 | [260629-9k5-enable-mempalace-by-default-in-coderscaf](./quick/260629-9k5-enable-mempalace-by-default-in-coderscaf/) |
 
 ## Deferred Items
 
