@@ -44,6 +44,17 @@
     "security_block_on": "high",
     "_auto_chain_active": false
   },
+  "mempalace": {
+    "enabled": true,
+    "memory_mode": "augment",
+    "wing": "",
+    "recall_on_discuss": true,
+    "recall_on_plan": true,
+    "capture_artifacts": true,
+    "mirror_kg": true,
+    "cross_project_tunnels": false,
+    "diary_journal": true
+  },
   "ship": {
     "pr_body_sections": []
   },
