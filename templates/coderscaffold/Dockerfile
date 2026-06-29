@@ -25,4 +25,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
  && apt-get install -y --no-install-recommends nodejs \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
+
+# ── MemPalace CLI (Python) ───────────────────────────────────────────────────
+# Local-first AI memory CLI (https://github.com/MemPalace/mempalace). Installed
+# into a venv under /opt — OUTSIDE the /home/coder volume that shadows home at
+# runtime — and symlinked onto the system PATH, so it survives every workspace
+# start with no per-boot cost. Its MCP server is registered in the agent
+# startup_script; data persists under ~/.mempalace on the home volume.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv \
+ && python3 -m venv /opt/mempalace \
+ && /opt/mempalace/bin/pip install --no-cache-dir mempalace \
+ && ln -sf /opt/mempalace/bin/mempalace /usr/local/bin/mempalace \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
 USER coder

@@ -237,6 +237,29 @@ resource "coder_agent" "main" {
       echo "WARN: node not found; skipping webforJ MCP registration" >&2
     fi
 
+    # ── MemPalace MCP server — preconfigure in user-scope Claude config ────────
+    # Registers MemPalace's stdio MCP server (the system-wide `mempalace` CLI baked
+    # into the image, run as `mempalace mcp serve`) under the top-level "mcpServers"
+    # key of the shared ~/.claude.json, so every workspace for this owner has local
+    # memory available out of the box. Merged with node (guaranteed present) so
+    # existing config and auth are preserved. Idempotent: re-asserts the entry on
+    # every start without duplicating. Non-fatal under set -e (WR-03 warn-and-
+    # continue): a missing node or a write failure must NEVER abort the
+    # startup_script — log and continue.
+    if command -v node >/dev/null 2>&1; then
+      CLAUDE_JSON="$CLAUDE_SHARED/dot-claude.json" node -e '
+        const fs = require("fs");
+        const f = process.env.CLAUDE_JSON;
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(f, "utf8") || "{}") || {}; } catch (e) {}
+        cfg.mcpServers = cfg.mcpServers || {};
+        cfg.mcpServers.mempalace = { command: "mempalace", args: ["mcp", "serve"] };
+        fs.writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n");
+      ' || echo "WARN: could not register MemPalace MCP server; continuing" >&2
+    else
+      echo "WARN: node not found; skipping MemPalace MCP registration" >&2
+    fi
+
     # ── GSD (gsd-core) — install-once into the shared per-owner ~/.claude ────────
     # Idempotent (skip if already installed) and non-fatal (WR-03): a failed or
     # npm-less install must never abort startup.
@@ -262,6 +285,19 @@ resource "coder_agent" "main" {
       else
         echo "WARN: git not found; skipping project clone" >&2
       fi
+    fi
+
+    # ── MemPalace — initialize the palace for the project ─────────────────────
+    # Bootstraps ~/.mempalace (local ChromaDB store) once, scoped to the project
+    # folder, so MemPalace recall/capture works from first start. PROJECT_DIR is
+    # the cloned repo path when the optional git_repo parameter was supplied, else
+    # $HOME — so init is best-effort whether or not a repo was cloned. Guarded on
+    # the `mempalace` CLI being present AND ~/.mempalace being absent (idempotent:
+    # never re-inits an existing palace). Non-fatal (WR-03): a missing binary or an
+    # init failure must NEVER abort the startup_script — warn and continue.
+    if command -v mempalace >/dev/null 2>&1 && [ ! -e "$HOME/.mempalace" ]; then
+      mempalace init "$PROJECT_DIR" \
+        || echo "WARN: mempalace init failed; continuing" >&2
     fi
   EOT
 

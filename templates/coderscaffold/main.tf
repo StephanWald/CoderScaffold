@@ -217,6 +217,29 @@ resource "coder_agent" "main" {
       echo "WARN: node not found; skipping webforJ MCP registration" >&2
     fi
 
+    # ── MemPalace MCP server — preconfigure in user-scope Claude config ────────
+    # Registers MemPalace's stdio MCP server (the system-wide `mempalace` CLI baked
+    # into the image, run as `mempalace mcp serve`) under the top-level "mcpServers"
+    # key of the shared ~/.claude.json, so every workspace for this owner has local
+    # memory available out of the box. Merged with node (guaranteed present) so
+    # existing config and auth are preserved. Idempotent: re-asserts the entry on
+    # every start without duplicating. Non-fatal under set -e (WR-03 warn-and-
+    # continue): a missing node or a write failure must NEVER abort the
+    # startup_script — log and continue.
+    if command -v node >/dev/null 2>&1; then
+      CLAUDE_JSON="$CLAUDE_SHARED/dot-claude.json" node -e '
+        const fs = require("fs");
+        const f = process.env.CLAUDE_JSON;
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(f, "utf8") || "{}") || {}; } catch (e) {}
+        cfg.mcpServers = cfg.mcpServers || {};
+        cfg.mcpServers.mempalace = { command: "mempalace", args: ["mcp", "serve"] };
+        fs.writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n");
+      ' || echo "WARN: could not register MemPalace MCP server; continuing" >&2
+    else
+      echo "WARN: node not found; skipping MemPalace MCP registration" >&2
+    fi
+
     # ── GSD (gsd-core) — install-once into the shared per-owner ~/.claude ────────
     # GSD installs under ~/.claude (skills, agents, gsd-core/bin), which is the
     # shared per-owner volume — so a single install persists across every one of
@@ -250,6 +273,17 @@ resource "coder_agent" "main" {
       else
         echo "WARN: git not found; skipping CoderScaffold clone" >&2
       fi
+    fi
+
+    # ── MemPalace — initialize the palace for the cloned repo ─────────────────
+    # Bootstraps ~/.mempalace (local ChromaDB store) once, scoped to the cloned
+    # CoderScaffold checkout, so MemPalace recall/capture works from first start.
+    # Guarded on the `mempalace` CLI being present AND ~/.mempalace being absent
+    # (idempotent: never re-inits an existing palace). Non-fatal (WR-03): a missing
+    # binary or an init failure must NEVER abort the startup_script — warn and go on.
+    if command -v mempalace >/dev/null 2>&1 && [ ! -e "$HOME/.mempalace" ]; then
+      mempalace init "$HOME/CoderScaffold" \
+        || echo "WARN: mempalace init failed; continuing" >&2
     fi
   EOT
 
