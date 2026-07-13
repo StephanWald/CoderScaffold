@@ -1,0 +1,165 @@
+---
+phase: quick-260713-m12
+plan: "01"
+subsystem: templates/bbj-services
+tags: [coder, workspace-template, bbj, bbj-services, terraform, docker]
+dependency_graph:
+  requires: [templates/java-fullstack (fork source), compose.yaml, .env.example]
+  provides: [templates/bbj-services Coder workspace template]
+  affects: [compose.yaml (new bind mount), .env.example (new vars)]
+tech_stack:
+  added:
+    - templates/bbj-services/Dockerfile (Adoptium JDK + BBj silent install)
+    - templates/bbj-services/main.tf (Terraform Coder template)
+    - templates/bbj-services/playback.properties (BBj silent-install answer file)
+    - templates/bbj-services/README.md (operator setup guide)
+    - templates/bbj-services/.terraform.lock.hcl (pinned provider hashes)
+  patterns:
+    - Fork-and-adapt (java-fullstack → bbj-services)
+    - Bake-at-build from operator host context (license-gated assets stay off git)
+    - Non-fatal background service launch (WR-03 warn-and-continue)
+    - try() guards for terraform validate without real assets
+key_files:
+  created:
+    - templates/bbj-services/Dockerfile
+    - templates/bbj-services/main.tf
+    - templates/bbj-services/playback.properties
+    - templates/bbj-services/README.md
+    - templates/bbj-services/.terraform.lock.hcl
+  modified:
+    - compose.yaml
+    - .env.example
+decisions:
+  - "Bake BBj at image build time from host context folder (operator-supplied JAR + cert never in git)"
+  - "coder_app subdomain=true with share=owner for 8888 (T-m12-02 threat mitigation)"
+  - "Adoptium 21 default + Adoptium 25 only — drop oracle-* options (BBj Adoptium requirement)"
+  - "BBjServices launched by agent startup_script (nohup/setsid), not CMD — agent stays foreground"
+  - "try(filesha1(BBj.jar), 'no-jar') in triggers so terraform validate passes without real JAR"
+  - "INSTALL_JAVA_DIRECTORY_NON_WIN=/opt/java/default (deploy-blocking fix from upstream Alpine path)"
+metrics:
+  duration: "~30 minutes"
+  completed: "2026-07-13"
+  tasks_completed: 3
+  tasks_total: 3
+  files_created: 5
+  files_modified: 2
+status: complete
+---
+
+# Phase quick-260713-m12 Plan 01: BBjServices Workspace Template Summary
+
+**One-liner:** Coder workspace template forked from java-fullstack that bakes BasisHub BBjServices via a silent install from a host context folder, launches it in the background via the agent startup_script, and exposes port 8888 as a subdomain-routed coder_app.
+
+---
+
+## Tasks Completed
+
+| Task | Name | Commit | Key Files |
+|------|------|--------|-----------|
+| 1 | BBjServices Dockerfile and playback.properties | 0e9bd09 | templates/bbj-services/Dockerfile, templates/bbj-services/playback.properties |
+| 2 | Fork main.tf into BBjServices template | 1700eae | templates/bbj-services/main.tf |
+| 3 | Wire compose + .env.example, write README, run TF gate | aa5e349 | compose.yaml, .env.example, templates/bbj-services/README.md, .terraform.lock.hcl |
+
+---
+
+## Verification Gate Result (MANDATORY — ran for real with Terraform v1.15.7)
+
+```
+terraform init -backend=false   → Terraform has been successfully initialized!
+terraform validate              → Success! The configuration is valid.
+terraform fmt -check            → exit 0 (no formatting diffs)
+```
+
+All three gates passed. Provider versions pinned in `.terraform.lock.hcl`:
+- coder/coder v2.18.0
+- kreuzwerker/docker v4.5.0
+- hashicorp/http v3.6.0
+
+---
+
+## Critical Correctness Points Implemented
+
+| Item | Status |
+|------|--------|
+| `INSTALL_JAVA_DIRECTORY_NON_WIN=/opt/java/default` (deploy-blocking fix) | DONE |
+| No `CMD bbjservices` in Dockerfile | DONE |
+| Adoptium 21 (default) + 25 only; no oracle-* | DONE |
+| `coder_app "bbjservices"` url=http://localhost:8888, subdomain=true, share="owner", healthcheck | DONE |
+| `build.context = var.bbj_context_path` | DONE |
+| `LICENSE_SERVER` build-arg + JAR sha1 + license_server in triggers | DONE |
+| `try(filesha1(...), "no-jar")` guard so validate passes without real JAR | DONE |
+| BBjServices launched non-fatally in background (WR-03) | DONE |
+| compose.yaml bind mount `${BBJ_ASSETS_PATH:-./bbj-assets}:/mnt/bbj-assets:ro` | DONE |
+| `.env.example` BBJ_ASSETS_PATH + BBJ_LICENSE_SERVER documented | DONE |
+| README: three FLAGS + live-deploy verify steps + explicit CANNOT statement | DONE |
+
+---
+
+## Deviations from Plan
+
+### Auto-fixed Issues
+
+None — plan executed exactly as written.
+
+### Minor Decisions Within Claude's Discretion (per CONTEXT.md)
+
+1. **BBjServices idempotency check** — Used `ss -tlnp | grep ':8888'` (port check) plus pidfile `/tmp/bbjservices.pid` as dual idempotency guards. Both are portable on the Ubuntu base image.
+
+2. **Dockerfile EXPOSE 8888** — Kept as optional/harmless per plan guidance. The coder_app only needs the agent to reach localhost:8888 inside the container.
+
+3. **Maven kept in Dockerfile** — Retained to minimize divergence from the java-fullstack fork, as directed.
+
+4. **`.terraform.lock.hcl` committed** — Generated by `terraform init -backend=false` during the Task 3 verification gate; included in the Task 3 commit so operators get reproducible provider installs.
+
+---
+
+## Full E2E Verification Status
+
+**Static Terraform gate: PASSED** (terraform init/validate/fmt -check, Terraform v1.15.7).
+
+**Full image-build and 8888 E2E: CANNOT be verified in this repo** — no real BBj*.jar, certificate.bls, or reachable BLS license server are present. This is the operator's live-deploy step:
+1. Drop BBj*.jar + certificate.bls into BBJ_ASSETS_PATH
+2. Copy templates/bbj-services/Dockerfile + playback.properties into BBJ_ASSETS_PATH
+3. Set BBJ_ASSETS_PATH + BBJ_LICENSE_SERVER in .env, restart compose
+4. `coder templates push bbj-services`, create workspace, confirm image builds (BBj install succeeds)
+5. Confirm BBjServices app button reaches port 8888
+
+See `templates/bbj-services/README.md ## Verifying the deployment` for the full operator checklist.
+
+---
+
+## Threat Flags
+
+No new unplanned threat surface introduced. All surfaces covered by the plan's threat model:
+
+| Threat ID | Status |
+|-----------|--------|
+| T-m12-01 (BBj JAR/cert/license server disclosure) | Mitigated: assets in gitignored host folder, :ro bind mount, BBJ_LICENSE_SERVER in gitignored .env |
+| T-m12-02 (coder_app share scope) | Mitigated: share = "owner" |
+| T-m12-03 (build context tampering) | Accepted: :ro mount |
+| T-m12-04 (BBjServices DoS / crash) | Mitigated: WR-03 non-fatal startup_script |
+
+---
+
+## Self-Check: PASSED
+
+Files exist:
+- templates/bbj-services/Dockerfile: FOUND
+- templates/bbj-services/main.tf: FOUND
+- templates/bbj-services/playback.properties: FOUND
+- templates/bbj-services/README.md: FOUND
+
+Commits exist:
+- 0e9bd09: FOUND (Task 1)
+- 1700eae: FOUND (Task 2)
+- aa5e349: FOUND (Task 3)
+
+Verification checks:
+- INSTALL_JAVA_DIRECTORY_NON_WIN=/opt/java/default: FOUND in playback.properties
+- LICENSE_SERVER_PLACEHOLDER: FOUND in playback.properties
+- coder_app "bbjservices": FOUND in main.tf
+- localhost:8888: FOUND in main.tf
+- /mnt/bbj-assets:ro: FOUND in compose.yaml
+- BBJ_ASSETS_PATH: FOUND in .env.example
+- terraform validate: Success
+- terraform fmt -check: exit 0

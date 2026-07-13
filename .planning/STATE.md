@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-06-29 — Completed quick task 260629-9k5: enable MemPalace by default in coderscaffold + java-fullstack workspace templates (CLI install + MCP wiring + GSD capability flip)
+Last activity: 2026-07-13 — Completed quick task 260713-m12: create templates/bbj-services/ Coder workspace template (BBjServices + full dev env; TF validate gate passed)
 
 ## Performance Metrics
 
@@ -121,6 +121,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260619-bix | Add `scripts/update-coder.sh` (--check, backup→pin→pull→recreate→health-gate, --push-templates/--dry-run) + README "Updating Coder" section; latest stable v2.33.9 | 2026-06-19 | f66b9f8 | [260619-bix-add-scripts-update-coder-sh-backup-then-pul](./quick/260619-bix-add-scripts-update-coder-sh-backup-then-pul/) |
 | 260619-ej7 | Wire Google OIDC login into compose + .env.example: opt-in `CODER_OIDC_*` vars (issuer/client/scopes), disabled by default (empty client id), `basis.cloud` email-domain restriction | 2026-06-19 | 79ef750 | [260619-ej7-wire-google-oidc-login-into-coder-compos](./quick/260619-ej7-wire-google-oidc-login-into-coder-compos/) |
 | 260629-9k5 | Enable MemPalace by default in `coderscaffold` + `java-fullstack` templates: system-wide `mempalace` CLI (/opt venv), MCP server registered in workspace Claude config (mirrors webforJ), guarded `mempalace init` post-clone, + GSD `mempalace.enabled` capability flip in config.json | 2026-06-29 | e459f20 | [260629-9k5-enable-mempalace-by-default-in-coderscaf](./quick/260629-9k5-enable-mempalace-by-default-in-coderscaf/) |
+| 260713-m12 | New `templates/bbj-services/` Coder workspace template: forks java-fullstack, bakes BBjServices via silent install from operator host context (BBJ_ASSETS_PATH), Adoptium 21/25 only, coder_app on 8888, non-fatal background launch; compose.yaml bind mount + .env.example vars; terraform validate + fmt -check gate passed | 2026-07-13 | aa5e349 | [260713-m12-create-coder-workspace-template-template](./quick/260713-m12-create-coder-workspace-template-template/) |
 
 ## Deferred Items
 
@@ -135,8 +136,8 @@ None. All planned work for milestone v1.1 is complete.
 
 ## Session Continuity
 
-Last session: 2026-06-18
-Stopped at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
+Last session: 2026-07-13
+Stopped at: Quick task 260713-m12 complete — templates/bbj-services/ created, terraform validate gate passed.
 Resume file: None
 
 ## Operator Next Steps
