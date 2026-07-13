@@ -41,25 +41,38 @@ Create the host asset folder (default `./bbj-assets`, relative to this repo):
 mkdir -p ./bbj-assets
 ```
 
-Copy the operator-supplied assets into it:
+Copy **all version jars** side-by-side into the asset folder using the **exact filenames**
+referenced in your `combinations.json` (see below). Jars must be staged next to each other —
+the combo selector picks the exact named file, not a glob:
 
 ```bash
-cp /path/to/BBj-installer.jar ./bbj-assets/BBj.jar    # or BBj*.jar glob
-cp /path/to/certificate.bls   ./bbj-assets/
+cp /path/to/BBj-25.12-installer.jar  ./bbj-assets/BBj-25.12.jar
+cp /path/to/BBj-26.01-installer.jar  ./bbj-assets/BBj-26.01.jar  # if offering JDK 25 combo
+cp /path/to/certificate.bls           ./bbj-assets/
+```
+
+Next, **copy and configure the combinations list**:
+
+```bash
+cp templates/bbj-services/combinations.example.json ./bbj-assets/combinations.json
+# Edit combinations.json — list ONLY combos whose BBj version + JDK pairing you have
+# confirmed is valid. The Coder create-workspace dropdown lists exactly these combos.
+# The JDK is derived from the combo — there is no separate JDK picker.
 ```
 
 Then **ship the template's own files into the same folder** — this folder is
 the Docker build context, so the Dockerfile and answer file must be co-located
-with the JAR and certificate:
+with the jars and certificate:
 
 ```bash
 cp templates/bbj-services/Dockerfile           ./bbj-assets/
 cp templates/bbj-services/playback.properties  ./bbj-assets/
 ```
 
-> The template keeps its own copies of `Dockerfile` and `playback.properties`
-> under version control. The operator copies them into `BBJ_ASSETS_PATH` before
-> each template push. If you update the template files, re-copy them before pushing.
+> The template keeps its own copies of `Dockerfile`, `playback.properties`, and
+> `combinations.example.json` under version control. The operator copies them into
+> `BBJ_ASSETS_PATH` before each template push. If you update the template files,
+> re-copy them before pushing.
 
 ### Step 2: Set environment variables
 
@@ -97,7 +110,9 @@ a valid JAR + certificate.
 ### Step 5: Create a workspace
 
 In the Coder dashboard, create a new workspace from the `bbj-services` template.
-Choose a JDK at creation time (Adoptium 21 is the default and recommended choice).
+Choose a **BBj stack** (combo) from the dropdown — the JDK is derived from it automatically.
+The dropdown lists exactly the combos in your `combinations.json`; an unsupported BBj×JDK
+pairing cannot be selected.
 
 Once the workspace starts, the agent `startup_script` launches BBjServices in
 the background. After a brief startup delay, click the **BBjServices** button
@@ -123,23 +138,24 @@ Change `subdomain = true` to `subdomain = false` in `main.tf` before pushing —
 this switches to path-based routing (`/proxy/port/8888/`), which works without
 a wildcard subdomain but may affect BBjServices internal URL generation.
 
-### FLAG-02: JDK 25 requires a BBj build that supports it
+### FLAG-02: JDK 25 compatibility is enforced by combo curation
 
-The `adoptium-25` JDK option is available but **experimental**. The upstream
-BBjServices release ships with JDK 21 support. Using JDK 25 requires a BBj
-version that explicitly supports JDK 25 — confirm this with BasisHub before
-selecting it. If you choose JDK 25 and the BBj installer rejects it, the image
-build will fail.
+The `adoptium-25` JDK is only available when the admin has explicitly listed a
+combo pairing it with a BBj version that supports it (e.g. `bbj-26.01-jdk25` in
+`combinations.json`). Because the JDK is derived from the selected combo, an
+unsupported BBj×JDK pairing **cannot be selected** from the dropdown.
 
-**Recommendation:** Use the default `adoptium-21` unless you have confirmed
-BBj support for JDK 25.
+**Operator responsibility:** Only list a JDK-25 combo in `combinations.json` after
+confirming with BasisHub that the paired BBj version supports JDK 25. If you include
+a JDK-25 combo and the BBj installer rejects it, the image build will fail during
+`coder templates push` or workspace creation.
 
 ### FLAG-03: /opt/bbx is baked into the image, not persisted
 
 The BBj installation lives at `/opt/bbx` inside the workspace image. This
 directory is **baked at image build time** and is **not persisted** across
-image rebuilds. If you change `BBJ_LICENSE_SERVER`, swap the JAR, or change
-the JDK selection, Terraform rebuilds the image and the BBj install runs again.
+image rebuilds. If you change `BBJ_LICENSE_SERVER`, swap the JAR, or select a
+different BBj stack combo, Terraform rebuilds the image and the BBj install runs again.
 
 Configuration changes made inside `/opt/bbx` at runtime (e.g. via the
 Enterprise Manager) will be **lost on the next image rebuild**.
@@ -150,6 +166,40 @@ and workspace stop/start cycles.
 If you need `/opt/bbx` to persist configuration across rebuilds, a Docker
 volume for `/opt/bbx` can be added to the `docker_container` resource in
 `main.tf` (operator's choice — not included by default to keep the template simple).
+
+---
+
+## Pre-warming images with bbj-build-combos.sh
+
+`scripts/bbj-build-combos.sh` pre-warms one Docker image per combo before any workspace
+is created. It reads the **same `combinations.json`** the template reads (from
+`BBJ_ASSETS_PATH`) so it can never drift out of sync.
+
+```bash
+./scripts/bbj-build-combos.sh
+```
+
+Because the script builds on the **same host Docker daemon** with the **same context and
+build args** as the in-template Terraform build, it warms the BuildKit layer cache. When
+a user creates a workspace, the in-template build is a near-instant cache hit — the
+expensive BBj silent install is already done. This keeps workspace creation fast for the
+first user of each combo.
+
+**On-demand build is the always-works fallback.** The in-template `docker_image` build
+runs unconditionally at workspace creation time even if you never run this script. The
+first user of an un-warmed combo waits for the full image build (dominated by the BBj
+silent install); subsequent users are cache hits.
+
+**Requirements (operator step — cannot run here):**
+- `jq` must be on PATH (`apt-get install jq` or `brew install jq`)
+- Real BBj installer jars must exist in `BBJ_ASSETS_PATH` (e.g. `BBj-25.12.jar`)
+- `certificate.bls` and `playback.properties` must be in `BBJ_ASSETS_PATH`
+- A reachable BLS license server (`BBJ_LICENSE_SERVER`)
+
+The script cannot be run end-to-end in this repository — no real jars or certificate
+are present here. `bash -n` (syntax) and `shellcheck` are the verifiable steps in this repo.
+
+**Exit codes:** `0` = all combos built; `1` = one or more failed; `2` = jq not found.
 
 ---
 
@@ -171,15 +221,22 @@ require the real BBj JAR, certificate, or a reachable BLS server — the
 ### Live verification (operator step — requires real assets)
 
 Static validation is NOT sufficient to declare this template working. The
-following steps require the real BBj JAR, `certificate.bls`, and a reachable
+following steps require the real BBj jars, `certificate.bls`, and a reachable
 BLS server — assets this repository does NOT contain. **Full end-to-end
 verification CANNOT be done in this repo** and is the operator's responsibility:
 
-1. **Image build** — after `coder templates push`, create a workspace and
-   confirm the workspace image builds successfully. The critical step is the
-   BBj silent install (`java -jar BBj.jar -p playback.properties`) — it must
-   complete without error. A failure here means the JAR is missing, the
-   certificate is wrong, or the BLS server is unreachable.
+0. **(Optional but recommended) Pre-warm all combo images** — run
+   `./scripts/bbj-build-combos.sh` after staging the assets. This verifies
+   every combo builds and warms the BuildKit layer cache so workspace creation
+   is fast. Check the per-combo PASS/FAIL summary and fix any failures before
+   pushing the template.
+
+1. **Per-combo image build** — after `coder templates push`, create a workspace
+   for each combo in your `combinations.json` and confirm the image builds
+   successfully. The critical step is the BBj silent install
+   (`java -jar BBj.jar -p playback.properties`) — it must complete without error.
+   A failure here means the jar is missing, the certificate is wrong, or the
+   BLS server is unreachable.
 
 2. **BBjServices starts** — inspect the workspace's startup log and confirm
    BBjServices launched. You can also check the in-workspace log:
@@ -207,16 +264,19 @@ verification CANNOT be done in this repo** and is the operator's responsibility:
 compose.yaml
   coder service
     /mnt/bbj-assets (read-only bind mount of BBJ_ASSETS_PATH)
-      BBj*.jar        ← operator-supplied, license-gated
-      certificate.bls ← operator-supplied
-      Dockerfile      ← copied from templates/bbj-services/
-      playback.properties ← copied from templates/bbj-services/
+      combinations.json     ← copied from combinations.example.json, edited by operator
+      BBj-25.12.jar         ← operator-supplied, license-gated (one per combo)
+      BBj-26.01.jar         ← operator-supplied, license-gated (one per combo)
+      certificate.bls       ← operator-supplied
+      Dockerfile            ← copied from templates/bbj-services/
+      playback.properties   ← copied from templates/bbj-services/
 
 templates/bbj-services/
-  Dockerfile          ← version-controlled; operator copies into BBJ_ASSETS_PATH
-  main.tf             ← Coder template (this file)
-  playback.properties ← BBj silent-install answer file; version-controlled
-  README.md           ← this file
+  Dockerfile                ← version-controlled; operator copies into BBJ_ASSETS_PATH
+  main.tf                   ← Coder template (this file)
+  playback.properties       ← BBj silent-install answer file; version-controlled
+  combinations.example.json ← example combo list; operator copies to BBJ_ASSETS_PATH/combinations.json
+  README.md                 ← this file
 
 Workspace container
   /opt/java/default   ← Adoptium JDK (baked at build, not persisted)
