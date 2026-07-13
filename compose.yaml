@@ -48,6 +48,10 @@ services:
       # This volume is not required in a production environment - you may safely remove it.
       # Coder can recreate all the files it needs on restart.
       - coder_home:/home/coder
+      # BBj build context: operator-supplied BBj*.jar + certificate.bls + template Dockerfile +
+      # playback.properties. Bind-mounted read-only so the coder provisioner can build the
+      # bbj-services workspace image. Contents are license-gated and must NOT be committed to git.
+      - ${BBJ_ASSETS_PATH:-./bbj-assets}:/mnt/bbj-assets:ro
     depends_on:
       database:
         condition: service_healthy
