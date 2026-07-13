@@ -6,14 +6,14 @@
 # Forked from templates/java-fullstack/main.tf. BBj-specific changes:
 #   - build context is the operator-supplied host asset folder (var.bbj_context_path)
 #   - LICENSE_SERVER build-arg is injected from var.bbj_license_server
-#   - JDK parameter is restricted to Adoptium 21/25 (BBj requires Adoptium)
+#   - BBj stack (BBj version + JDK) is chosen from an admin-curated combo list
 #   - BBjServices is started in the background by the agent startup_script;
 #     the agent process stays in the foreground so editors/SSH remain reachable
 #   - coder_app "bbjservices" exposes localhost:8888 via subdomain routing
 #
 # Workspace parameters (prompted in the Coder UI at create time):
-#   git_repo — optional Git URL to clone into the workspace; editors open it
-#   jdk      — which Adoptium JDK to install (build-time; changing it rebuilds the image)
+#   git_repo  — optional Git URL to clone into the workspace; editors open it
+#   bbj_stack — which curated (BBj version + JDK) combo to build; JDK is derived from it
 #
 # Requires:
 #   - Coder server running (compose.yaml) with BBJ_ASSETS_PATH bind-mounted at /mnt/bbj-assets
@@ -110,30 +110,26 @@ data "coder_parameter" "git_repo" {
   order        = 1
 }
 
-# JDK selection — build-time, Adoptium only. The value is passed as the JDK
-# build arg and is part of the image name + triggers, so changing it rebuilds
-# the workspace image (mutable = true: editable on a workspace update).
-# Only Adoptium JDKs are offered — the BBj silent install targets the Adoptium
-# path /opt/java/default (set in playback.properties). Oracle JDKs are not supported.
-data "coder_parameter" "jdk" {
-  name         = "jdk"
-  display_name = "JDK"
-  description  = "Adoptium JDK to install. Build-time selection — changing it rebuilds the workspace image. Only Adoptium builds are supported for BBj compatibility."
+# BBj stack selection — build-time, mutable = false (a different combo is a new
+# workspace). The selected combo derives the JDK and the BBj installer jar, so
+# an unsupported BBj×JDK pairing cannot be selected. The admin curates the list
+# via combinations.json in the asset folder; see combinations.example.json.
+data "coder_parameter" "bbj_stack" {
+  name         = "bbj_stack"
+  display_name = "BBj stack"
+  description  = "Which curated (BBj version + JDK) combo to build. The JDK is derived from the combo — there is no separate JDK picker, so unsupported BBj×JDK pairings cannot be selected. A different stack requires a new workspace."
   type         = "string"
-  default      = "adoptium-21"
-  mutable      = true
+  default      = local.bbj_combinations[0].id
+  mutable      = false
   icon         = "/icon/java.svg"
   order        = 2
 
-  option {
-    name        = "Adoptium (Temurin) 21 — LTS (recommended)"
-    value       = "adoptium-21"
-    description = "Adoptium JDK 21 LTS. Fully supported by the current BBj release."
-  }
-  option {
-    name        = "Adoptium (Temurin) 25 — experimental"
-    value       = "adoptium-25"
-    description = "WARNING: JDK 25 requires a BBj build that explicitly supports it. The upstream BBj release ships with JDK 21. Only use this option if your BBj version supports JDK 25."
+  dynamic "option" {
+    for_each = local.bbj_combinations
+    content {
+      name  = option.value.display
+      value = option.value.id
+    }
   }
 }
 
@@ -162,6 +158,21 @@ locals {
   repo_url       = data.coder_parameter.git_repo.value
   repo_name      = local.repo_url != "" ? replace(basename(local.repo_url), ".git", "") : ""
   project_folder = local.repo_name != "" ? "/home/coder/${local.repo_name}" : "/home/coder"
+
+  # ── BBj stack combinations ────────────────────────────────────────────────
+  # The curated list is read from the operator's combinations.json at plan time.
+  # try() ensures terraform validate passes in this repo (no real combinations.json
+  # present at /mnt/bbj-assets) by falling back to local.default_combinations.
+  # When the file IS present it is authoritative and overrides the default.
+  default_combinations = [
+    { id = "bbj-25.12-jdk21", display = "BBj 25.12 · JDK 21 (Adoptium)", jar = "BBj.jar", jdk = "adoptium-21" },
+  ]
+  bbj_combinations = try(
+    jsondecode(file("${var.bbj_context_path}/combinations.json")),
+    local.default_combinations,
+  )
+  combos_by_id = { for c in local.bbj_combinations : c.id => c }
+  selected     = local.combos_by_id[data.coder_parameter.bbj_stack.value]
 }
 
 # ── Workspace agent ───────────────────────────────────────────────────────────
@@ -398,20 +409,23 @@ resource "docker_volume" "home_volume" {
 # The build context is the operator-supplied host asset folder (var.bbj_context_path,
 # default /mnt/bbj-assets), which is bind-mounted into the coder service via compose.yaml.
 # The operator must copy this Dockerfile + playback.properties into that folder
-# alongside BBj*.jar and certificate.bls before running coder templates push.
+# alongside the version jars (e.g. BBj-25.12.jar) and certificate.bls before running
+# coder templates push.
 #
-# Triggers include the JDK selection, license server, and JAR checksum so any
-# change to those values forces a full image rebuild (and re-runs the BBj install).
+# Triggers include the selected BBj stack (BBj version + JDK), license server, and JAR
+# checksum so any change to those values forces a full image rebuild (and re-runs the
+# BBj install).
 
 resource "docker_image" "main" {
-  name = "coder-${data.coder_workspace.me.id}-bbj-${data.coder_parameter.jdk.value}"
+  name = "coder-${data.coder_workspace.me.id}-bbj-${data.coder_parameter.bbj_stack.value}"
 
   build {
     context    = var.bbj_context_path
     dockerfile = "Dockerfile"
     build_args = {
       BASE_IMAGE     = var.workspace_image
-      JDK            = data.coder_parameter.jdk.value
+      JDK            = local.selected.jdk
+      BBJ_JAR_NAME   = local.selected.jar
       MAVEN_VERSION  = var.maven_version
       LICENSE_SERVER = var.bbj_license_server
     }
@@ -421,10 +435,11 @@ resource "docker_image" "main" {
     # Use try() so terraform validate succeeds when the asset folder is absent;
     # a real JAR or Dockerfile change in the context folder forces a rebuild.
     dockerfile_sha1 = try(filesha1("${var.bbj_context_path}/Dockerfile"), filesha1("${path.module}/Dockerfile"))
-    jdk             = data.coder_parameter.jdk.value
+    stack           = data.coder_parameter.bbj_stack.value
+    jdk             = local.selected.jdk
     maven_version   = var.maven_version
     license_server  = var.bbj_license_server
-    bbj_jar_sha1    = try(filesha1("${var.bbj_context_path}/BBj.jar"), "no-jar")
+    bbj_jar_sha1    = try(filesha1("${var.bbj_context_path}/${local.selected.jar}"), "no-jar")
   }
 
   keep_locally = true

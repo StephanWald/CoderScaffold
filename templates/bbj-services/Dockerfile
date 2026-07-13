@@ -5,10 +5,10 @@
 # base image, then bakes in the BasisHub BBj silent install from the operator-
 # supplied build context (BBj*.jar + certificate.bls + this file + playback.properties).
 #
-# Build args (set by main.tf from the workspace's coder_parameter values and
-# template variables):
+# Build args (set by main.tf from the selected BBj stack combo and template variables):
 #   BASE_IMAGE      — base image (overridable via workspace_image variable)
-#   JDK             — which JDK to install: adoptium-21 | adoptium-25
+#   JDK             — which JDK to install: adoptium-21 | adoptium-25 (derived from combo)
+#   BBJ_JAR_NAME    — named BBj installer jar filename staged in the asset folder (derived from combo)
 #   MAVEN_VERSION   — pinned Apache Maven version (3.9.x)
 #   LICENSE_SERVER  — BLS license server host:port, sed'd into playback.properties
 #
@@ -144,7 +144,8 @@ RUN apt-get update \
 # required runtime configuration (vfork launch, disable admin warning, web user).
 # Build-time cache and logs are cleaned to reduce image size.
 ADD playback.properties /tmp/playback.properties
-ADD BBj*.jar /tmp/BBj.jar
+ARG BBJ_JAR_NAME=BBj.jar
+ADD ${BBJ_JAR_NAME} /tmp/BBj.jar
 ADD certificate.bls /tmp/certificate.bls
 
 ARG LICENSE_SERVER
