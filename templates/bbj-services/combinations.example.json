@@ -1,0 +1,4 @@
+[
+  { "id": "bbj-26.01-jdk25", "display": "BBj 26.01 · JDK 25 (Adoptium)", "jar": "BBj-26.01.jar", "jdk": "adoptium-25" },
+  { "id": "bbj-25.12-jdk21", "display": "BBj 25.12 · JDK 21 (Adoptium)", "jar": "BBj-25.12.jar", "jdk": "adoptium-21" }
+]
