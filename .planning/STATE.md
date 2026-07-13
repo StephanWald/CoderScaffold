@@ -122,6 +122,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260619-ej7 | Wire Google OIDC login into compose + .env.example: opt-in `CODER_OIDC_*` vars (issuer/client/scopes), disabled by default (empty client id), `basis.cloud` email-domain restriction | 2026-06-19 | 79ef750 | [260619-ej7-wire-google-oidc-login-into-coder-compos](./quick/260619-ej7-wire-google-oidc-login-into-coder-compos/) |
 | 260629-9k5 | Enable MemPalace by default in `coderscaffold` + `java-fullstack` templates: system-wide `mempalace` CLI (/opt venv), MCP server registered in workspace Claude config (mirrors webforJ), guarded `mempalace init` post-clone, + GSD `mempalace.enabled` capability flip in config.json | 2026-06-29 | e459f20 | [260629-9k5-enable-mempalace-by-default-in-coderscaf](./quick/260629-9k5-enable-mempalace-by-default-in-coderscaf/) |
 | 260713-m12 | New `templates/bbj-services/` Coder workspace template: forks java-fullstack, bakes BBjServices via silent install from operator host context (BBJ_ASSETS_PATH), Adoptium 21/25 only, coder_app on 8888, non-fatal background launch; compose.yaml bind mount + .env.example vars; terraform validate + fmt -check gate passed | 2026-07-13 | aa5e349 | [260713-m12-create-coder-workspace-template-template](./quick/260713-m12-create-coder-workspace-template-template/) |
+| 260713-mlt | Replace standalone `jdk` coder_parameter with `bbj_stack` combo dropdown backed by combinations.json (try(jsondecode(file(...)), local.default_combinations)); Dockerfile ARG BBJ_JAR_NAME; new combinations.example.json + bbj-build-combos.sh (per-combo pre-warm, jq required, exit codes); README + .env.example updated; terraform validate + fmt-check + shellcheck gate passed | 2026-07-13 | 1f8251f | [260713-mlt-add-bbj-stack-combo-selector-to-bbj-serv](./quick/260713-mlt-add-bbj-stack-combo-selector-to-bbj-serv/) |
 
 ## Deferred Items
 
@@ -137,7 +138,7 @@ None. All planned work for milestone v1.1 is complete.
 ## Session Continuity
 
 Last session: 2026-07-13
-Stopped at: Quick task 260713-m12 complete — templates/bbj-services/ created, terraform validate gate passed.
+Stopped at: Quick task 260713-mlt complete — bbj_stack combo selector added to templates/bbj-services/; terraform validate + fmt-check + shellcheck gates passed.
 Resume file: None
 
 ## Operator Next Steps
