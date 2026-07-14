@@ -56,6 +56,11 @@ BBJ_LICENSE_SERVER="${BBJ_LICENSE_SERVER:-}"
 BASE_IMAGE="${BASE_IMAGE:-codercom/enterprise-base:ubuntu}"
 MAVEN_VERSION="${MAVEN_VERSION:-3.9.16}"
 
+# BBj has no arm64 Linux native libraries — build linux/amd64 so the image matches
+# the template (var.bbj_platform) and runs natively on x86-64 servers / Rosetta-
+# emulated on Apple Silicon. Must equal the template default to keep cache hits.
+BBJ_PLATFORM="${BBJ_PLATFORM:-linux/amd64}"
+
 # Resolve the build context to an absolute path so docker build works from any cwd.
 # Portable across GNU and BSD/macOS — avoids `realpath -m` (the -m/--canonicalize-missing
 # flag is GNU-only; macOS's BSD realpath rejects it). Relative paths resolve against
@@ -134,6 +139,7 @@ while IFS= read -r combo; do
   # Capture docker build exit status explicitly so one failure does not abort
   # the whole loop (allowing the summary to be complete).
   if docker build \
+    --platform "${BBJ_PLATFORM}" \
     --build-arg "JDK=${JDK}" \
     --build-arg "BBJ_JAR_NAME=${JAR}" \
     --build-arg "BASE_IMAGE=${BASE_IMAGE}" \

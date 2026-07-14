@@ -95,6 +95,17 @@ variable "bbj_license_server" {
   default     = ""
 }
 
+# BBj ships only x86-64 Linux native libraries (libNativeUtil / libUser, and an
+# x86-64 ELF loader). On arm64 hosts (Apple Silicon) an arm64 image fails at
+# runtime with UnsatisfiedLinkError and "failed to open /lib64/ld-linux-x86-64.so.2".
+# Pin the image to linux/amd64 so it is native on x86-64 servers and Rosetta/qemu-
+# emulated on Apple Silicon. Override only if BASIS ships arm64 Linux natives.
+variable "bbj_platform" {
+  description = "Docker platform for the BBjServices image. BBj has no arm64 Linux build, so this must be linux/amd64 (emulated on Apple Silicon)."
+  type        = string
+  default     = "linux/amd64"
+}
+
 # ── Workspace parameters (prompted at create time) ────────────────────────────
 
 # Optional Git repository to clone on first start. Empty = start with an empty
@@ -318,6 +329,13 @@ resource "coder_agent" "main" {
     # foreground and editors/SSH remain reachable. The agent init_script is the
     # container entrypoint — exec'ing BBjServices here would replace the agent.
     #
+    # Run as ROOT via sudo: BBj is installed into root-owned /opt/bbx and its
+    # install sets webUser=root, so a non-root launch fails to write
+    # /opt/bbx/cfg (pool-config.xml, BBjServices.running → AccessDeniedException)
+    # and cannot honor webUser=root. The coder base image grants coder passwordless
+    # sudo. The shell (as coder) owns the /tmp/bbjservices.log redirect; sudo runs
+    # the daemon as root.
+    #
     # Idempotent: skip if already listening on port 8888 or a pidfile exists.
     # Non-fatal (WR-03 warn-and-continue): a failed or absent BBj install must
     # NEVER abort the startup_script — log and continue so the workspace stays
@@ -326,8 +344,8 @@ resource "coder_agent" "main" {
       if ss -tlnp 2>/dev/null | grep -q ':8888' || [ -f /tmp/bbjservices.pid ]; then
         echo "INFO: BBjServices already running (port 8888 active or pidfile present); skipping launch" >&2
       else
-        echo "INFO: Starting BBjServices in the background..." >&2
-        nohup setsid /opt/bbx/bin/bbjservices --launchd \
+        echo "INFO: Starting BBjServices in the background (as root via sudo)..." >&2
+        sudo nohup setsid /opt/bbx/bin/bbjservices --launchd \
           >/tmp/bbjservices.log 2>&1 &
         echo $! > /tmp/bbjservices.pid
         echo "INFO: BBjServices launched (pid=$(cat /tmp/bbjservices.pid)); log at /tmp/bbjservices.log" >&2
@@ -431,6 +449,7 @@ resource "docker_image" "main" {
   build {
     context    = var.bbj_context_path
     dockerfile = "Dockerfile"
+    platform   = var.bbj_platform
     build_args = {
       BASE_IMAGE     = var.workspace_image
       JDK            = local.selected.jdk
@@ -448,6 +467,7 @@ resource "docker_image" "main" {
     jdk             = local.selected.jdk
     maven_version   = var.maven_version
     license_server  = var.bbj_license_server
+    platform        = var.bbj_platform
     bbj_jar_sha1    = try(filesha1("${var.bbj_context_path}/${local.selected.jar}"), "no-jar")
   }
 
