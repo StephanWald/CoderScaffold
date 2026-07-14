@@ -121,41 +121,49 @@ pairing cannot be selected.
 
 Once the workspace starts, the agent `startup_script` launches BBjServices in
 the background. After a brief startup delay, reach the HTTP interface on 8888
-two ways:
+through the **Coder app** — the **BBjServices** button in the dashboard. The app
+tunnels through the Coder agent (no host port), so it is **per-workspace and never
+conflicts**, no matter how many BBj workspaces run on the same Docker host. This
+is the recommended route; see FLAG-01 for its two modes.
 
-- **Coder app** — the **BBjServices** button in the dashboard (subdomain route; see FLAG-01).
-- **Directly on the Docker host** — the container publishes 8888 to a host port
-  (default `127.0.0.1:8888`), so `http://localhost:8888` works on the machine
-  running Docker without any wildcard-DNS setup. Controlled by two template
-  variables:
-  - `bbj_host_port` (default `8888`; set `0` to disable host publishing)
-  - `bbj_host_port_bind` (default `127.0.0.1`; set `0.0.0.0` to expose on the LAN)
-
-  **Only one workspace can bind a given host port.** If you run more than one BBj
-  workspace on the same Docker host, either give each a distinct `bbj_host_port`
-  or disable publishing (`bbj_host_port=0`) and use the Coder app route, which is
-  per-workspace. Set these at push time (`coder templates push --variable bbj_host_port=8890`)
-  or in the template's variable settings in the Coder UI.
+A direct host-port publish (`http://localhost:<port>`) is available but **off by
+default** — see FLAG-01.
 
 ---
 
 ## Flags (known limitations and configuration requirements)
 
-### FLAG-01: Subdomain routing requires CODER_WILDCARD_ACCESS_URL
+### FLAG-01: How to reach port 8888 (app routing + optional host port)
 
-The `coder_app "bbjservices"` is configured with `subdomain = true`, which
-routes the 8888 app via a wildcard subdomain (e.g. `bbjservices--<workspace>.<apps-domain>`).
+BBjServices is reachable three ways. Pick based on whether you have a wildcard URL.
 
-**Requirements for subdomain routing:**
-- `CODER_WILDCARD_ACCESS_URL` must be set (e.g. `*.coder.example.com`)
-- An external reverse proxy must route `*.<apps-domain>` to the Coder server
+**1. Path-based Coder app — default, zero config.**
+`var.bbj_app_subdomain = false` (the default) serves the app under a path
+(`…/@<user>/<workspace>/apps/bbjservices/`). Needs **no** `CODER_WILDCARD_ACCESS_URL`,
+works per-workspace, no host ports, no conflicts. This is why it's the default —
+it avoids the *"subdomain applications are not configured"* warning entirely.
+Caveat: apps that emit absolute URLs can render oddly under a path prefix. Try it
+first; if the BBjServices UI misbehaves, use mode 2.
 
-**On the committed default** (`CODER_ACCESS_URL=127.0.0.1`, no wildcard), the
-BBjServices button will not route correctly. To use locally without wildcard DNS:
+**2. Wildcard subdomain Coder app — best for the BBjServices web UI.**
+Set `var.bbj_app_subdomain = true`. Requires `CODER_WILDCARD_ACCESS_URL` on the
+server. Still per-workspace and conflict-free (no host port).
+- Real server: set `CODER_WILDCARD_ACCESS_URL=*.coder.example.com` and route
+  `*.<apps-domain>` to the Coder server via your proxy.
+- **Local Mac / no DNS:** use [nip.io](https://nip.io) — set
+  `CODER_WILDCARD_ACCESS_URL=*.127.0.0.1.nip.io` in `.env` (with
+  `CODER_ACCESS_URL=http://127.0.0.1:7080`). `*.127.0.0.1.nip.io` resolves to
+  `127.0.0.1` with zero DNS setup, so subdomain apps work locally. Restart the
+  Coder stack after changing `.env`.
 
-Change `subdomain = true` to `subdomain = false` in `main.tf` before pushing —
-this switches to path-based routing (`/proxy/port/8888/`), which works without
-a wildcard subdomain but may affect BBjServices internal URL generation.
+**3. Direct host port — optional escape hatch, OFF by default.**
+`var.bbj_host_port` (default `0` = disabled) publishes container 8888 to a host
+port for direct `http://localhost:<port>` access; `var.bbj_host_port_bind`
+(default `127.0.0.1`) sets the bind address. **A host port can be bound by only
+one container**, so a fixed value collides across concurrent workspaces — that is
+why it defaults off. If you enable it and run several BBj workspaces, give each a
+distinct port (`coder templates push --variable bbj_host_port=8890`) or just use
+the per-workspace Coder app (mode 1 or 2) instead.
 
 ### FLAG-02: JDK 25 compatibility is enforced by combo curation
 

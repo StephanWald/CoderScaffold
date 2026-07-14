@@ -106,19 +106,36 @@ variable "bbj_platform" {
   default     = "linux/amd64"
 }
 
-# Publish the container's BBjServices port 8888 to a host port, so it is reachable
-# directly at http://<docker-host>:<port> (e.g. http://localhost:8888 on the local
-# Docker host) IN ADDITION to the coder_app / wildcard-subdomain route. Set 0 to
-# disable host publishing (subdomain access only).
+# coder_app routing mode for BBjServices. The Coder app tunnels through the agent
+# (NO host port), so it is per-workspace and never conflicts — the right way to
+# reach 8888 when several workspaces share a Docker host.
+#   false (default) → PATH-based routing (…/@user/workspace/apps/bbjservices/).
+#                     Works with NO extra server config — no wildcard URL needed —
+#                     which is why it is the default (avoids the "subdomain apps not
+#                     configured" warning). Caveat: web apps that emit absolute URLs
+#                     can misbehave under a path prefix.
+#   true            → wildcard SUBDOMAIN routing. Best for complex web UIs like
+#                     BBjServices, but REQUIRES CODER_WILDCARD_ACCESS_URL on the
+#                     server (see FLAG-01 / the nip.io tip in the README).
+variable "bbj_app_subdomain" {
+  description = "coder_app routing: false = path-based (no wildcard URL needed, default); true = wildcard subdomain (requires CODER_WILDCARD_ACCESS_URL)."
+  type        = bool
+  default     = false
+}
+
+# OPTIONAL direct host publish of container 8888 → http://<docker-host>:<port>.
+# Default 0 (OFF): the coder_app above is the primary, conflict-free route. Enable
+# this only for direct http://localhost:<port> access, and only when you can accept
+# the caveat below.
 #
-# CAVEAT: a host port can be bound by only ONE container. If more than one BBj
-# workspace runs on the same Docker host they will collide on this port — the
-# second container fails to start. For multiple concurrent workspaces, rely on the
-# coder_app route (which is per-workspace) or give each a distinct host port.
+# CAVEAT: a host port can be bound by only ONE container, so a fixed value collides
+# when multiple BBj workspaces share a host. If you enable it, give each concurrent
+# workspace a DISTINCT port (set per template version / via --variable), or leave it
+# 0 and use the per-workspace coder_app route instead.
 variable "bbj_host_port" {
-  description = "Host port to publish BBjServices (container 8888) on. 0 disables host publishing (Coder app/subdomain access still works). Only one workspace can bind a given host port."
+  description = "Optional host port to publish BBjServices (container 8888) on. 0 = disabled (default; use the coder_app route). A fixed value collides across concurrent workspaces on the same host."
   type        = number
-  default     = 8888
+  default     = 0
 }
 
 # Bind address for the published host port. 127.0.0.1 = reachable only from the
@@ -612,10 +629,11 @@ module "claude-code" {
 
 # ── BBjServices app ──────────────────────────────────────────────────────────
 #
-# Exposes the BBjServices HTTP interface (port 8888) as a Coder app.
-# subdomain=true routes via wildcard subdomain (requires CODER_WILDCARD_ACCESS_URL
-# and an external proxy — see FLAG-01 in the README). share="owner" restricts
-# access to the workspace owner only (T-m12-02 threat mitigation).
+# Exposes the BBjServices HTTP interface (port 8888) as a Coder app. Tunnels
+# through the agent — no host port, so it is per-workspace and conflict-free.
+# Routing mode is var.bbj_app_subdomain (default false = path-based, which needs no
+# wildcard URL; true = subdomain, which requires CODER_WILDCARD_ACCESS_URL — see
+# FLAG-01). share="owner" restricts access to the workspace owner (T-m12-02).
 # The healthcheck polls the server root; interval=10s, threshold=6 (60s grace).
 
 resource "coder_app" "bbjservices" {
@@ -624,7 +642,7 @@ resource "coder_app" "bbjservices" {
   display_name = "BBjServices"
   url          = "http://localhost:8888"
   icon         = "/icon/java.svg"
-  subdomain    = true
+  subdomain    = var.bbj_app_subdomain
   share        = "owner"
 
   healthcheck {
