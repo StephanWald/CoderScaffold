@@ -55,7 +55,19 @@ BASE_IMAGE="${BASE_IMAGE:-codercom/enterprise-base:ubuntu}"
 MAVEN_VERSION="${MAVEN_VERSION:-3.9.16}"
 
 # Resolve the build context to an absolute path so docker build works from any cwd.
-BBJ_ASSETS_PATH="$(cd "${PROJECT_ROOT}" && realpath -m "${BBJ_ASSETS_PATH}")"
+# Portable across GNU and BSD/macOS — avoids `realpath -m` (the -m/--canonicalize-missing
+# flag is GNU-only; macOS's BSD realpath rejects it). Relative paths resolve against
+# PROJECT_ROOT; the folder must exist (it is the docker build context).
+case "${BBJ_ASSETS_PATH}" in
+  /*) : ;;                                            # already absolute
+  *) BBJ_ASSETS_PATH="${PROJECT_ROOT}/${BBJ_ASSETS_PATH}" ;;
+esac
+if [[ ! -d "${BBJ_ASSETS_PATH}" ]]; then
+  echo "ERROR: BBJ_ASSETS_PATH does not exist: ${BBJ_ASSETS_PATH}" >&2
+  echo "  Create it and stage the BBj jar(s) + certificate.bls + combinations.json + Dockerfile + playback.properties." >&2
+  exit 1
+fi
+BBJ_ASSETS_PATH="$(cd "${BBJ_ASSETS_PATH}" && pwd -P)"
 
 # ---------------------------------------------------------------------------
 # Require jq — the script cannot proceed without it
