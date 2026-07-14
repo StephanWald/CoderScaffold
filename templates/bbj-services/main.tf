@@ -106,6 +106,30 @@ variable "bbj_platform" {
   default     = "linux/amd64"
 }
 
+# Publish the container's BBjServices port 8888 to a host port, so it is reachable
+# directly at http://<docker-host>:<port> (e.g. http://localhost:8888 on the local
+# Docker host) IN ADDITION to the coder_app / wildcard-subdomain route. Set 0 to
+# disable host publishing (subdomain access only).
+#
+# CAVEAT: a host port can be bound by only ONE container. If more than one BBj
+# workspace runs on the same Docker host they will collide on this port — the
+# second container fails to start. For multiple concurrent workspaces, rely on the
+# coder_app route (which is per-workspace) or give each a distinct host port.
+variable "bbj_host_port" {
+  description = "Host port to publish BBjServices (container 8888) on. 0 disables host publishing (Coder app/subdomain access still works). Only one workspace can bind a given host port."
+  type        = number
+  default     = 8888
+}
+
+# Bind address for the published host port. 127.0.0.1 = reachable only from the
+# Docker host itself (safe default for local dev); 0.0.0.0 = reachable from other
+# machines that can reach the host (use deliberately).
+variable "bbj_host_port_bind" {
+  description = "IP to bind the published BBjServices host port to. 127.0.0.1 (local only) or 0.0.0.0 (all interfaces)."
+  type        = string
+  default     = "127.0.0.1"
+}
+
 # ── Workspace parameters (prompted at create time) ────────────────────────────
 
 # Optional Git repository to clone on first start. Empty = start with an empty
@@ -498,6 +522,19 @@ resource "docker_container" "workspace" {
   host {
     host = "host.docker.internal"
     ip   = "host-gateway"
+  }
+
+  # Publish BBjServices (container 8888) to a host port so it is reachable at
+  # http://<docker-host>:<bbj_host_port> directly (e.g. http://localhost:8888),
+  # alongside the coder_app route. Disabled when bbj_host_port = 0.
+  dynamic "ports" {
+    for_each = var.bbj_host_port > 0 ? [1] : []
+    content {
+      internal = 8888
+      external = var.bbj_host_port
+      ip       = var.bbj_host_port_bind
+      protocol = "tcp"
+    }
   }
 
   # Persistent home volume at /home/coder.

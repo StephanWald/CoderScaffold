@@ -5,6 +5,14 @@
 # base image, then bakes in the BasisHub BBj silent install from the operator-
 # supplied build context (BBj*.jar + certificate.bls + this file + playback.properties).
 #
+# MULTI-STAGE (space cleanup): the ~1.25 GB BBj installer jar is ADDed and run in
+# the throwaway `bbjinstall` stage. The `final` stage only COPYs the installed
+# /opt/bbx tree, so the runtime image never carries the jar. (A plain `rm` after
+# ADD would only whiteout the jar, not reclaim its space.) Multi-stage builds work
+# on both the legacy and BuildKit builders — unlike RUN --mount — so this is safe
+# for the kreuzwerker Terraform provider's in-template build as well as the CLI
+# pre-warm script.
+#
 # Build args (set by main.tf from the selected BBj stack combo and template variables):
 #   BASE_IMAGE      — base image (overridable via workspace_image variable)
 #   JDK             — which JDK to install: adoptium-21 | adoptium-25 (derived from combo)
@@ -27,12 +35,18 @@
 # at runtime. /opt and /usr are outside that mount, so the toolchain survives.
 
 ARG BASE_IMAGE=codercom/enterprise-base:ubuntu
-FROM ${BASE_IMAGE}
+
+# ════════════════════════════════════════════════════════════════════════════
+# Stage: base — shared toolchain (JDK + Node.js + Maven + MemPalace + SSH).
+# Both the BBj install stage and the final runtime image derive from this, so the
+# toolchain layers are built once and shared (the final image reuses them).
+# ════════════════════════════════════════════════════════════════════════════
+FROM ${BASE_IMAGE} AS base
 
 ARG JDK=adoptium-21
 ARG MAVEN_VERSION=3.9.16
 
-# Root for system installs; the base image drops back to the coder user at the end.
+# Root for system installs; the final stage drops back to the coder user at the end.
 USER root
 
 # ── Node.js LTS via NodeSource ───────────────────────────────────────────────
@@ -132,21 +146,19 @@ RUN apt-get update \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-# ── BBj silent install (baked at build time from the operator context) ────────
+# ════════════════════════════════════════════════════════════════════════════
+# Stage: bbjinstall — run the BBj silent install. The ~1.25 GB installer jar is
+# ADDed HERE and never reaches the final image (this whole stage is discarded).
+# ════════════════════════════════════════════════════════════════════════════
+FROM base AS bbjinstall
+
 # The build context is the operator-supplied host folder (BBJ_ASSETS_PATH /
 # /mnt/bbj-assets). The operator must place BBj*.jar + certificate.bls + this
 # Dockerfile + playback.properties into that folder before building.
-#
-# The LICENSE_SERVER build-arg is passed from main.tf (var.bbj_license_server)
-# and sed'd into the answer file at build time, replacing the placeholder token.
-# BBj is installed silently (-p playback.properties) using the vfork launch
-# mechanism required for Docker build environments. Post-install seds apply the
-# required runtime configuration (vfork launch, disable admin warning, web user).
-# Build-time cache and logs are cleaned to reduce image size.
-ADD playback.properties /tmp/playback.properties
+COPY playback.properties /tmp/playback.properties
 ARG BBJ_JAR_NAME=BBj.jar
-ADD ${BBJ_JAR_NAME} /tmp/BBj.jar
-ADD certificate.bls /tmp/certificate.bls
+COPY ${BBJ_JAR_NAME} /tmp/BBj.jar
+COPY certificate.bls /tmp/certificate.bls
 
 ARG LICENSE_SERVER
 # Fail loud (in the build log) if the BLS server is empty — otherwise the sed
@@ -159,10 +171,13 @@ RUN if [ -z "${LICENSE_SERVER}" ]; then \
     fi; \
     sed -i "s/LICENSE_SERVER_PLACEHOLDER/${LICENSE_SERVER}/g" /tmp/playback.properties
 
+# BBj is installed silently (-p playback.properties) using the vfork launch
+# mechanism required for Docker build environments.
 RUN java -Djdk.lang.Process.launchMechanism=vfork -jar /tmp/BBj.jar -p /tmp/playback.properties
 
 # Post-install configuration: set vfork launch mechanism in BBj.properties,
-# disable the admin user warning, set web user to root, and clean up build artifacts.
+# disable the admin user warning, set web user to root, and clean up build
+# artifacts so the /opt/bbx copied into the final stage is already trimmed.
 RUN sed -i 's|^com.basis.startup.args=.*|com.basis.startup.args=-Djdk.lang.Process.launchMechanism=vfork|' /opt/bbx/cfg/BBj.properties \
  && sed -i 's|^defaultAdminUserWarning=.*|defaultAdminUserWarning=false|' /opt/bbx/cfg/BBj.properties \
  && sed -i 's|^webUser=.*|webUser=root|' /opt/bbx/cfg/BBj.properties \
@@ -173,6 +188,17 @@ RUN sed -i 's|^com.basis.startup.args=.*|com.basis.startup.args=-Djdk.lang.Proce
            /opt/bbx/documentation \
            /opt/bbx/lib/aws-java-sdk-*.jar \
            /opt/bbx/lib/BBjTextSearch*.jar
+
+# ════════════════════════════════════════════════════════════════════════════
+# Stage: final — runtime image. Copies ONLY the installed /opt/bbx from the
+# bbjinstall stage; the installer jar stays behind and is discarded.
+# ════════════════════════════════════════════════════════════════════════════
+FROM base AS final
+
+# COPY --from preserves the full tree, including hidden dirs like /opt/bbx/.lib
+# (BBjStartup.jar + native libraries). Files land root-owned, matching the
+# install (BBjServices is launched as root via sudo from the agent startup_script).
+COPY --from=bbjinstall /opt/bbx /opt/bbx
 
 EXPOSE 8888
 

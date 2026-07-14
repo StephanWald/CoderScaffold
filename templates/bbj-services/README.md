@@ -120,8 +120,22 @@ The dropdown lists exactly the combos in your `combinations.json`; an unsupporte
 pairing cannot be selected.
 
 Once the workspace starts, the agent `startup_script` launches BBjServices in
-the background. After a brief startup delay, click the **BBjServices** button
-in the Coder dashboard to reach the HTTP interface on port 8888.
+the background. After a brief startup delay, reach the HTTP interface on 8888
+two ways:
+
+- **Coder app** — the **BBjServices** button in the dashboard (subdomain route; see FLAG-01).
+- **Directly on the Docker host** — the container publishes 8888 to a host port
+  (default `127.0.0.1:8888`), so `http://localhost:8888` works on the machine
+  running Docker without any wildcard-DNS setup. Controlled by two template
+  variables:
+  - `bbj_host_port` (default `8888`; set `0` to disable host publishing)
+  - `bbj_host_port_bind` (default `127.0.0.1`; set `0.0.0.0` to expose on the LAN)
+
+  **Only one workspace can bind a given host port.** If you run more than one BBj
+  workspace on the same Docker host, either give each a distinct `bbj_host_port`
+  or disable publishing (`bbj_host_port=0`) and use the Coder app route, which is
+  per-workspace. Set these at push time (`coder templates push --variable bbj_host_port=8890`)
+  or in the template's variable settings in the Coder UI.
 
 ---
 
