@@ -113,7 +113,7 @@ data "coder_parameter" "git_repo" {
 # BBj stack selection — build-time, mutable = false (a different combo is a new
 # workspace). The selected combo derives the JDK and the BBj installer jar, so
 # an unsupported BBj×JDK pairing cannot be selected. The admin curates the list
-# via combinations.json in the asset folder; see combinations.example.json.
+# in combinations.json (bundled with the template — edit it and re-push).
 data "coder_parameter" "bbj_stack" {
   name         = "bbj_stack"
   display_name = "BBj stack"
@@ -160,15 +160,24 @@ locals {
   project_folder = local.repo_name != "" ? "/home/coder/${local.repo_name}" : "/home/coder"
 
   # ── BBj stack combinations ────────────────────────────────────────────────
-  # The curated list is read from the operator's combinations.json at plan time.
-  # try() ensures terraform validate passes in this repo (no real combinations.json
-  # present at /mnt/bbj-assets) by falling back to local.default_combinations.
-  # When the file IS present it is authoritative and overrides the default.
+  # The curated list is read from combinations.json BUNDLED WITH THE TEMPLATE
+  # (path.module), NOT from the runtime asset bind mount. This is deliberate:
+  # coder_parameter options are the immutable contract of a template VERSION, so
+  # they must be deterministic and always visible to the provisioner. Sourcing
+  # them from the bind-mounted asset folder made the options flip to the fallback
+  # whenever the provisioner couldn't see /mnt/bbj-assets, which orphaned stored
+  # parameter values ("value must be one of options" on rebuild). Reading from
+  # path.module ships the manifest inside every pushed template version — edit
+  # combinations.json and re-push to change the offered combos.
+  #
+  # The jars/certificate stay in the asset folder (the docker build context); only
+  # this small manifest lives with the template. try() keeps terraform validate
+  # working even if the file is somehow absent, falling back to default_combinations.
   default_combinations = [
     { id = "bbj-25.12-jdk21", display = "BBj 25.12 · JDK 21 (Adoptium)", jar = "BBj.jar", jdk = "adoptium-21" },
   ]
   bbj_combinations = try(
-    jsondecode(file("${var.bbj_context_path}/combinations.json")),
+    jsondecode(file("${path.module}/combinations.json")),
     local.default_combinations,
   )
   combos_by_id = { for c in local.bbj_combinations : c.id => c }

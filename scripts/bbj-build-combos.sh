@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # scripts/bbj-build-combos.sh — Non-interactive per-combo BBjServices image pre-warm
 #
-# Reads the same combinations.json that templates/bbj-services/main.tf reads and
-# builds one Docker image per combo, warming the BuildKit layer cache so subsequent
-# in-template Terraform builds are near-instant cache hits.
+# Reads the SAME combinations.json that templates/bbj-services/main.tf reads —
+# the one bundled with the template (templates/bbj-services/combinations.json) —
+# and builds one Docker image per combo, warming the BuildKit layer cache so
+# subsequent in-template Terraform builds are near-instant cache hits. Reading the
+# same manifest keeps the pre-warm set and the template's dropdown from drifting.
 #
 # NOTE: This script CANNOT be run end-to-end in this repository — it requires:
-#   - Real BBj installer jars in BBJ_ASSETS_PATH (e.g. BBj-25.12.jar, BBj-26.01.jar)
+#   - Real BBj installer jars in BBJ_ASSETS_PATH (named per combinations.json)
 #   - A valid certificate.bls in BBJ_ASSETS_PATH
 #   - A reachable BLS license server (BBJ_LICENSE_SERVER)
-#   - Dockerfile + playback.properties copied into BBJ_ASSETS_PATH
+#   - Dockerfile + playback.properties copied into BBJ_ASSETS_PATH (build context)
 # These are operator-supplied assets not present in this repo. Running bash -n on
 # this script (syntax check) and shellcheck are the verifiable steps here.
 # Full end-to-end verification is the operator's live-deploy step.
@@ -64,7 +66,7 @@ case "${BBJ_ASSETS_PATH}" in
 esac
 if [[ ! -d "${BBJ_ASSETS_PATH}" ]]; then
   echo "ERROR: BBJ_ASSETS_PATH does not exist: ${BBJ_ASSETS_PATH}" >&2
-  echo "  Create it and stage the BBj jar(s) + certificate.bls + combinations.json + Dockerfile + playback.properties." >&2
+  echo "  Create it and stage the BBj jar(s) + certificate.bls + Dockerfile + playback.properties (the build context)." >&2
   exit 1
 fi
 BBJ_ASSETS_PATH="$(cd "${BBJ_ASSETS_PATH}" && pwd -P)"
@@ -80,18 +82,13 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# Resolve combinations.json — prefer the operator's asset folder copy; fall back
-# to the version-controlled example if absent (with a warning).
+# Resolve combinations.json — the template-bundled manifest is the single source
+# of truth (the same file templates/bbj-services/main.tf reads via path.module).
 # ---------------------------------------------------------------------------
-COMBOS_FILE="${BBJ_ASSETS_PATH}/combinations.json"
+COMBOS_FILE="${PROJECT_ROOT}/templates/bbj-services/combinations.json"
 if [[ ! -f "${COMBOS_FILE}" ]]; then
-  EXAMPLE_FILE="${PROJECT_ROOT}/templates/bbj-services/combinations.example.json"
-  echo "WARN: ${COMBOS_FILE} not found; falling back to ${EXAMPLE_FILE}" >&2
-  COMBOS_FILE="${EXAMPLE_FILE}"
-fi
-
-if [[ ! -f "${COMBOS_FILE}" ]]; then
-  echo "ERROR: No combinations.json found (checked asset folder and example). Cannot proceed." >&2
+  echo "ERROR: combinations.json not found at ${COMBOS_FILE}. Cannot proceed." >&2
+  echo "  This is the template-bundled combo manifest; it should be committed with the template." >&2
   exit 1
 fi
 

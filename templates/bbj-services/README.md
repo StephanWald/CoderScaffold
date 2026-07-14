@@ -51,28 +51,33 @@ cp /path/to/BBj-26.01-installer.jar  ./bbj-assets/BBj-26.01.jar  # if offering J
 cp /path/to/certificate.bls           ./bbj-assets/
 ```
 
-Next, **copy and configure the combinations list**:
+Next, **configure the combinations list** — this lives WITH the template
+(`templates/bbj-services/combinations.json`), **not** in the asset folder. It is
+bundled into every pushed template version, so the create-workspace dropdown is
+deterministic and never depends on whether the Coder server can see the asset
+bind mount:
 
 ```bash
-cp templates/bbj-services/combinations.example.json ./bbj-assets/combinations.json
-# Edit combinations.json — list ONLY combos whose BBj version + JDK pairing you have
-# confirmed is valid. The Coder create-workspace dropdown lists exactly these combos.
-# The JDK is derived from the combo — there is no separate JDK picker.
+# Edit the committed manifest directly (see combinations.example.json for the schema).
+# List ONLY combos whose BBj version + JDK pairing you have confirmed is valid, and
+# whose "jar" filename you have staged in ./bbj-assets above. The dropdown lists
+# exactly these combos; the JDK is derived from the combo (no separate JDK picker).
+$EDITOR templates/bbj-services/combinations.json
 ```
 
-Then **ship the template's own files into the same folder** — this folder is
+Then **ship the template's build files into the asset folder** — that folder is
 the Docker build context, so the Dockerfile and answer file must be co-located
-with the jars and certificate:
+with the jars and certificate (the combo manifest does NOT go here):
 
 ```bash
 cp templates/bbj-services/Dockerfile           ./bbj-assets/
 cp templates/bbj-services/playback.properties  ./bbj-assets/
 ```
 
-> The template keeps its own copies of `Dockerfile`, `playback.properties`, and
-> `combinations.example.json` under version control. The operator copies them into
-> `BBJ_ASSETS_PATH` before each template push. If you update the template files,
-> re-copy them before pushing.
+> `combinations.json` travels with the template (via `path.module`), so a change
+> to the offered combos is just an edit + re-push — the normal Coder "new template
+> version" flow. Only `Dockerfile` + `playback.properties` need copying into
+> `BBJ_ASSETS_PATH` before a push (re-copy them whenever you edit the template's).
 
 ### Step 2: Set environment variables
 
@@ -263,19 +268,19 @@ verification CANNOT be done in this repo** and is the operator's responsibility:
 ```
 compose.yaml
   coder service
-    /mnt/bbj-assets (read-only bind mount of BBJ_ASSETS_PATH)
-      combinations.json     ← copied from combinations.example.json, edited by operator
-      BBj-25.12.jar         ← operator-supplied, license-gated (one per combo)
-      BBj-26.01.jar         ← operator-supplied, license-gated (one per combo)
+    /mnt/bbj-assets (read-only bind mount of BBJ_ASSETS_PATH) — the Docker build context
+      BBj-*.jar             ← operator-supplied, license-gated (one per combo, exact names)
       certificate.bls       ← operator-supplied
       Dockerfile            ← copied from templates/bbj-services/
       playback.properties   ← copied from templates/bbj-services/
+      (NO combinations.json here — the manifest lives with the template, below)
 
 templates/bbj-services/
   Dockerfile                ← version-controlled; operator copies into BBJ_ASSETS_PATH
-  main.tf                   ← Coder template (this file)
+  main.tf                   ← Coder template (this file); reads combinations.json via path.module
   playback.properties       ← BBj silent-install answer file; version-controlled
-  combinations.example.json ← example combo list; operator copies to BBJ_ASSETS_PATH/combinations.json
+  combinations.json         ← LIVE curated combo list; bundled with the template, edit + re-push
+  combinations.example.json ← schema/multi-combo reference
   README.md                 ← this file
 
 Workspace container

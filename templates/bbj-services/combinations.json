@@ -1,0 +1,8 @@
+[
+  {
+    "id": "bbj-26.01-jdk25",
+    "display": "BBj 26.01 · JDK 25 (Adoptium)",
+    "jar": "BBjBaristaDemos2601_06-30-2026_1027.jar",
+    "jdk": "adoptium-25"
+  }
+]
