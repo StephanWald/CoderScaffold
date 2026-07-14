@@ -149,7 +149,15 @@ ADD ${BBJ_JAR_NAME} /tmp/BBj.jar
 ADD certificate.bls /tmp/certificate.bls
 
 ARG LICENSE_SERVER
-RUN sed -i "s/LICENSE_SERVER_PLACEHOLDER/${LICENSE_SERVER}/g" /tmp/playback.properties
+# Fail loud (in the build log) if the BLS server is empty — otherwise the sed
+# replaces the placeholder with nothing, BLS_DESIGNATION_SERVERNAME= is left blank,
+# and BBjServices reports "No license servers are configured" at runtime with no
+# obvious cause. The value flows: .env BBJ_LICENSE_SERVER → coder templates push
+# --variable bbj_license_server → var.bbj_license_server → this LICENSE_SERVER arg.
+RUN if [ -z "${LICENSE_SERVER}" ]; then \
+      echo "WARNING: LICENSE_SERVER build-arg is EMPTY — BBjServices will have NO BLS server configured (runtime: 'No license servers are configured'). Set BBJ_LICENSE_SERVER in .env and push with --variable bbj_license_server=host[:port]." >&2; \
+    fi; \
+    sed -i "s/LICENSE_SERVER_PLACEHOLDER/${LICENSE_SERVER}/g" /tmp/playback.properties
 
 RUN java -Djdk.lang.Process.launchMechanism=vfork -jar /tmp/BBj.jar -p /tmp/playback.properties
 

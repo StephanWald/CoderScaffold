@@ -131,11 +131,30 @@ for dir in "${PROJECT_ROOT}"/templates/*/; do
   found_any=1
   echo "Pushing template: ${name} (from ${dir%/})"
 
-  # Push this template non-interactively.
-  # --yes: skips the interactive confirmation prompt (required for scripted use).
-  # --directory: must be the path to the template directory (no trailing slash).
+  # Base push args. Seeded with --directory/--yes so the array is never empty
+  # (a bare "${arr[@]}" on an empty array aborts under `set -u` on bash 3.2 / macOS).
+  #   --yes: skips the interactive confirmation prompt (required for scripted use).
+  #   --directory: path to the template directory (no trailing slash).
+  push_args=("--directory" "${dir%/}" "--yes")
+
+  # Per-template Terraform variables (Coder "template variables"). Some templates
+  # need admin-level values supplied at push time; without them the template's
+  # `variable` block defaults apply. bbj-services bakes the BLS license server into
+  # the image at build time via var.bbj_license_server — if it is NOT passed here,
+  # the image builds with an EMPTY BLS server and BBjServices reports "No license
+  # servers are configured" at runtime. Source it from .env (BBJ_LICENSE_SERVER).
+  case "${name}" in
+    bbj-services)
+      if [[ -n "${BBJ_LICENSE_SERVER:-}" ]]; then
+        push_args+=("--variable" "bbj_license_server=${BBJ_LICENSE_SERVER}")
+      else
+        echo "WARN: BBJ_LICENSE_SERVER is not set in .env — ${name} will build with an EMPTY BLS server; BBjServices will report 'No license servers are configured' at runtime." >&2
+      fi
+      ;;
+  esac
+
   # Do NOT abort the loop on failure (set -e is active; wrap in if/else).
-  if coder templates push "${name}" --directory "${dir%/}" --yes; then
+  if coder templates push "${name}" "${push_args[@]}"; then
     pushed+=("${name}")
   else
     echo "WARN: Failed to push template: ${name}" >&2
