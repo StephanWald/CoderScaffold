@@ -109,18 +109,18 @@ variable "bbj_platform" {
 # coder_app routing mode for BBjServices. The Coder app tunnels through the agent
 # (NO host port), so it is per-workspace and never conflicts — the right way to
 # reach 8888 when several workspaces share a Docker host.
-#   false (default) → PATH-based routing (…/@user/workspace/apps/bbjservices/).
-#                     Works with NO extra server config — no wildcard URL needed —
-#                     which is why it is the default (avoids the "subdomain apps not
-#                     configured" warning). Caveat: web apps that emit absolute URLs
-#                     can misbehave under a path prefix.
-#   true            → wildcard SUBDOMAIN routing. Best for complex web UIs like
-#                     BBjServices, but REQUIRES CODER_WILDCARD_ACCESS_URL on the
-#                     server (see FLAG-01 / the nip.io tip in the README).
+#   true (default)  → wildcard SUBDOMAIN routing — the deployment standard: BBj's
+#                     Jetty redirects with absolute paths (e.g. / → /index.html),
+#                     which escape a path prefix and 404 on the Coder dashboard.
+#                     REQUIRES CODER_WILDCARD_ACCESS_URL on the server (see
+#                     FLAG-01 / the nip.io tip in the README).
+#   false           → PATH-based routing (…/@user/workspace/apps/bbjservices/).
+#                     No wildcard URL needed, but only suitable for path-friendly
+#                     apps — NOT the BBjServices web UI (absolute redirects).
 variable "bbj_app_subdomain" {
-  description = "coder_app routing: false = path-based (no wildcard URL needed, default); true = wildcard subdomain (requires CODER_WILDCARD_ACCESS_URL)."
+  description = "coder_app routing: true = wildcard subdomain (deployment standard; requires CODER_WILDCARD_ACCESS_URL); false = path-based (breaks on BBj's absolute-path redirects)."
   type        = bool
-  default     = false
+  default     = true
 }
 
 # OPTIONAL direct host publish of container 8888 → http://<docker-host>:<port>.
