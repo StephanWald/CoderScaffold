@@ -7,8 +7,8 @@
 #   - build context is the operator-supplied host asset folder (var.bbj_context_path)
 #   - LICENSE_SERVER build-arg is injected from var.bbj_license_server
 #   - BBj stack (BBj version + JDK) is chosen from an admin-curated combo list
-#   - BBjServices is started in the background by the agent startup_script;
-#     the agent process stays in the foreground so editors/SSH remain reachable
+#   - BBjServices is started by its own coder_script.bbjservices resource
+#     (foreground exec, :8888 port guard) instead of a startup_script background job
 #   - coder_app "bbjservices" exposes localhost:8888 via subdomain routing
 #
 # Workspace parameters (prompted in the Coder UI at create time):
@@ -24,6 +24,7 @@
 #
 # Resources:
 #   coder_agent      — workspace agent (always present; no count)
+#   coder_script     — BBjServices launch (foreground exec, dedicated dashboard log)
 #   docker_volume    — persistent /home/coder (survives stop/start)
 #   docker_image     — workspace image (built from operator host context)
 #   docker_container — ephemeral workspace container (count = start_count)
@@ -389,35 +390,11 @@ resource "coder_agent" "main" {
         || echo "WARN: mempalace init failed; continuing" >&2
     fi
 
-    # ── BBjServices — background launch (WR-03 non-fatal) ────────────────────
-    # Launch BBjServices as a background daemon so the agent process stays in the
-    # foreground and editors/SSH remain reachable. The agent init_script is the
-    # container entrypoint — exec'ing BBjServices here would replace the agent.
-    #
-    # Run as ROOT via sudo: BBj is installed into root-owned /opt/bbx and its
-    # install sets webUser=root, so a non-root launch fails to write
-    # /opt/bbx/cfg (pool-config.xml, BBjServices.running → AccessDeniedException)
-    # and cannot honor webUser=root. The coder base image grants coder passwordless
-    # sudo. The shell (as coder) owns the /tmp/bbjservices.log redirect; sudo runs
-    # the daemon as root.
-    #
-    # Idempotent: skip if already listening on port 8888 or a pidfile exists.
-    # Non-fatal (WR-03 warn-and-continue): a failed or absent BBj install must
-    # NEVER abort the startup_script — log and continue so the workspace stays
-    # accessible even if BBjServices fails to start.
-    if [ -x /opt/bbx/bin/bbjservices ]; then
-      if ss -tlnp 2>/dev/null | grep -q ':8888' || [ -f /tmp/bbjservices.pid ]; then
-        echo "INFO: BBjServices already running (port 8888 active or pidfile present); skipping launch" >&2
-      else
-        echo "INFO: Starting BBjServices in the background (as root via sudo)..." >&2
-        sudo nohup setsid /opt/bbx/bin/bbjservices --launchd \
-          >/tmp/bbjservices.log 2>&1 &
-        echo $! > /tmp/bbjservices.pid
-        echo "INFO: BBjServices launched (pid=$(cat /tmp/bbjservices.pid)); log at /tmp/bbjservices.log" >&2
-      fi
-    else
-      echo "WARN: /opt/bbx/bin/bbjservices not found; BBjServices will not be available on port 8888" >&2
-    fi
+    # NOTE: the BBjServices launch deliberately does NOT run here — a process
+    # backgrounded from startup_script inherits the script's output pipes
+    # (Coder warns "output pipes were not closed after 10s" and may terminate
+    # the child). It runs as its own coder_script resource below, in
+    # parallel, non-blocking, with a per-script log in the dashboard.
   EOT
 
   env = {
@@ -456,6 +433,35 @@ resource "coder_agent" "main" {
     interval     = 60
     timeout      = 1
   }
+}
+
+# ── BBjServices — dedicated script (WR-03 non-fatal) ─────────────────────────
+# Foreground under this script (exec): the script shows as running while
+# BBjServices is up and its output is the script's dashboard log. No pidfile —
+# the port guard is the only idempotency check (nothing else consumed the
+# pidfile; bbj-restart manages its own detached relaunch independently).
+
+resource "coder_script" "bbjservices" {
+  agent_id           = coder_agent.main.id
+  display_name       = "BBjServices"
+  run_on_start       = true
+  start_blocks_login = false
+
+  script = <<-EOT
+    #!/bin/sh
+    if [ ! -x /opt/bbx/bin/bbjservices ]; then
+      echo "WARN: /opt/bbx/bin/bbjservices not found; BBjServices will not be available on port 8888" >&2
+      exit 0
+    fi
+
+    if ss -tlnp 2>/dev/null | grep -q ':8888'; then
+      echo "BBjServices already running (port 8888 active); nothing to do."
+      exit 0
+    fi
+
+    echo "Starting BBjServices (foreground, as root via sudo) — this script stays running while BBjServices is up."
+    exec sudo /opt/bbx/bin/bbjservices --launchd
+  EOT
 }
 
 # ── Persistent home volume ────────────────────────────────────────────────────
