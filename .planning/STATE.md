@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-16 — Completed quick task 260716-afr: GitHub CLI (gh) baked into all 4 workspace template images
+Last activity: 2026-07-16 — Completed quick task 260716-ary: CLAUDE_CONFIG_DIR wired into all 4 templates (GSD 1.7.0 symlink-guard fix)
 
 ## Performance Metrics
 
@@ -126,6 +126,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260716-8p8 | Claude bypassPermissions by default in all 4 templates: idempotent startup_script block merges `permissions.defaultMode=bypassPermissions` into per-owner shared `~/.claude/settings.json` (Docker volume only — never the operator host); terraform validate gate passed on all 4 | 2026-07-16 | 2e7849d | [260716-8p8-add-claude-bypasspermissions-block-to-al](./quick/260716-8p8-add-claude-bypasspermissions-block-to-al/) |
 | 260716-9pg | bbj-services: BBjServices launch moved from startup_script background job (`nohup setsid … &` + pidfile) to dedicated `coder_script.bbjservices` (foreground `exec sudo --launchd`, `:8888` port guard only) — fixes Coder "output pipes were not closed after 10s" warning/kill risk; terraform validate + fmt gate passed | 2026-07-16 | b886ef0 | [260716-9pg-convert-bbj-services-bbjservices-launch-](./quick/260716-9pg-convert-bbj-services-bbjservices-launch-/) |
 | 260716-afr | GitHub CLI (gh) in all 4 workspace images: official cli.github.com apt repo block (arch-aware) inserted before final `USER coder` in each Dockerfile; block build-verified against enterprise-base (gh 2.96.0); auth per-user via `gh auth login` (persists on home volume) | 2026-07-16 | 7452918 | [260716-afr-add-github-cli-gh-to-all-four-workspace-](./quick/260716-afr-add-github-cli-gh-to-all-four-workspace-/) |
+| 260716-ary | CLAUDE_CONFIG_DIR in all 4 templates: agent env exports the physical shared dir (not the ~/.claude symlink) so GSD ≥ 1.7.0's write-confinement guard passes and /gsd-update needs no --config-dir; startup_script migrates shared dot-claude.json → dot-claude/.claude.json once (legacy path kept as symlink); terraform validate + fmt gate passed | 2026-07-16 | 4fcc693 | [260716-ary-wire-claude-config-dir-into-all-four-wor](./quick/260716-ary-wire-claude-config-dir-into-all-four-wor/) |
 
 ## Deferred Items
 
