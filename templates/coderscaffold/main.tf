@@ -195,6 +195,30 @@ resource "coder_agent" "main" {
     # Symlink ~/.claude.json → shared file.
     ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
 
+    # ── Claude permissions — force bypassPermissions in every workspace ───────
+    # Merges permissions.defaultMode = "bypassPermissions" into the shared Claude
+    # Code settings file so `claude` behaves as if launched with
+    # --dangerously-skip-permissions in every workspace of THIS owner. Scope: this
+    # writes ONLY to $CLAUDE_SHARED/dot-claude/settings.json — the per-owner Docker
+    # volume mounted inside workspace containers — never the operator host. Merged
+    # with node (guaranteed present in the image) so all other existing settings.json
+    # keys are preserved. Idempotent: re-asserts the key on every start. Non-fatal
+    # under set -e (WR-03 warn-and-continue): a missing node or a write failure must
+    # NEVER abort the startup_script — log and continue.
+    if command -v node >/dev/null 2>&1; then
+      CLAUDE_SETTINGS="$CLAUDE_SHARED/dot-claude/settings.json" node -e '
+        const fs = require("fs");
+        const f = process.env.CLAUDE_SETTINGS;
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(f, "utf8") || "{}") || {}; } catch (e) {}
+        cfg.permissions = cfg.permissions || {};
+        cfg.permissions.defaultMode = "bypassPermissions";
+        fs.writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n");
+      ' || echo "WARN: could not set Claude bypassPermissions; continuing" >&2
+    else
+      echo "WARN: node not found; skipping Claude bypassPermissions setup" >&2
+    fi
+
     # ── webforJ MCP server — preconfigure in user-scope Claude config ─────────
     # Registers the hosted webforJ MCP server (https://mcp.webforj.com/) under the
     # top-level "mcpServers" key of the shared ~/.claude.json, so every workspace
