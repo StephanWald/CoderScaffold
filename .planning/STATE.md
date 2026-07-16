@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-16 — Completed quick task 260716-8p8: Claude bypassPermissions default in all 4 workspace templates (per-owner container volume only)
+Last activity: 2026-07-16 — Completed quick task 260716-9pg: bbj-services BBjServices launch converted to dedicated coder_script (no more startup_script background job)
 
 ## Performance Metrics
 
@@ -124,6 +124,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260713-m12 | New `templates/bbj-services/` Coder workspace template: forks java-fullstack, bakes BBjServices via silent install from operator host context (BBJ_ASSETS_PATH), Adoptium 21/25 only, coder_app on 8888, non-fatal background launch; compose.yaml bind mount + .env.example vars; terraform validate + fmt -check gate passed | 2026-07-13 | aa5e349 | [260713-m12-create-coder-workspace-template-template](./quick/260713-m12-create-coder-workspace-template-template/) |
 | 260713-mlt | Replace standalone `jdk` coder_parameter with `bbj_stack` combo dropdown backed by combinations.json (try(jsondecode(file(...)), local.default_combinations)); Dockerfile ARG BBJ_JAR_NAME; new combinations.example.json + bbj-build-combos.sh (per-combo pre-warm, jq required, exit codes); README + .env.example updated; terraform validate + fmt-check + shellcheck gate passed | 2026-07-13 | 1f8251f | [260713-mlt-add-bbj-stack-combo-selector-to-bbj-serv](./quick/260713-mlt-add-bbj-stack-combo-selector-to-bbj-serv/) |
 | 260716-8p8 | Claude bypassPermissions by default in all 4 templates: idempotent startup_script block merges `permissions.defaultMode=bypassPermissions` into per-owner shared `~/.claude/settings.json` (Docker volume only — never the operator host); terraform validate gate passed on all 4 | 2026-07-16 | 2e7849d | [260716-8p8-add-claude-bypasspermissions-block-to-al](./quick/260716-8p8-add-claude-bypasspermissions-block-to-al/) |
+| 260716-9pg | bbj-services: BBjServices launch moved from startup_script background job (`nohup setsid … &` + pidfile) to dedicated `coder_script.bbjservices` (foreground `exec sudo --launchd`, `:8888` port guard only) — fixes Coder "output pipes were not closed after 10s" warning/kill risk; terraform validate + fmt gate passed | 2026-07-16 | b886ef0 | [260716-9pg-convert-bbj-services-bbjservices-launch-](./quick/260716-9pg-convert-bbj-services-bbjservices-launch-/) |
 
 ## Deferred Items
 
