@@ -187,6 +187,24 @@ resource "coder_agent" "main" {
     # Symlink ~/.claude.json → shared file.
     ln -sf "$CLAUDE_SHARED/dot-claude.json" "$HOME/.claude.json"
 
+    # ── CLAUDE_CONFIG_DIR — symlink-free config root for Claude Code AND GSD ──
+    # The agent env sets CLAUDE_CONFIG_DIR to the PHYSICAL shared dir (not the
+    # ~/.claude symlink). GSD >= 1.7.0 refuses to install/update into a
+    # symlinked config root (write-confinement guard); the env var hands it —
+    # and Claude Code — the resolved path, so /gsd-update works with no flags.
+    # With CLAUDE_CONFIG_DIR set, Claude Code reads $CLAUDE_CONFIG_DIR/.claude.json
+    # rather than ~/.claude.json: migrate the legacy shared file once, then keep
+    # the old location as a symlink so ~/.claude.json and all prior references
+    # stay coherent (writes follow the symlink). Idempotent.
+    if [ ! -L "$CLAUDE_SHARED/dot-claude.json" ] && [ -f "$CLAUDE_SHARED/dot-claude.json" ] \
+       && [ ! -f "$CLAUDE_SHARED/dot-claude/.claude.json" ]; then
+      cp -f "$CLAUDE_SHARED/dot-claude.json" "$CLAUDE_SHARED/dot-claude/.claude.json"
+    fi
+    if [ ! -f "$CLAUDE_SHARED/dot-claude/.claude.json" ]; then
+      echo '{}' > "$CLAUDE_SHARED/dot-claude/.claude.json"
+    fi
+    ln -sf "dot-claude/.claude.json" "$CLAUDE_SHARED/dot-claude.json"
+
     # ── Claude permissions — force bypassPermissions in every workspace ───────
     # Merges permissions.defaultMode = "bypassPermissions" into the shared Claude
     # Code settings file so `claude` behaves as if launched with
@@ -259,6 +277,10 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
+
+    # Real (symlink-free) Claude config dir — see the CLAUDE_CONFIG_DIR block
+    # in startup_script. Makes GSD updates work and is honored by Claude Code.
+    CLAUDE_CONFIG_DIR = "/home/coder/.claude-shared/dot-claude"
   }
 
   metadata {
