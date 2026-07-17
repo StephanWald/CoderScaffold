@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-16 — Completed quick task 260716-cef: shared bbj-base module extracted from bbj-dev in coder-bbj-private
+Last activity: 2026-07-17 — Completed quick task 260717-73u: bbj-ls-dev rebased with baked BBj install (coder-bbj-private)
 
 ## Performance Metrics
 
@@ -128,6 +128,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260716-afr | GitHub CLI (gh) in all 4 workspace images: official cli.github.com apt repo block (arch-aware) inserted before final `USER coder` in each Dockerfile; block build-verified against enterprise-base (gh 2.96.0); auth per-user via `gh auth login` (persists on home volume) | 2026-07-16 | 7452918 | [260716-afr-add-github-cli-gh-to-all-four-workspace-](./quick/260716-afr-add-github-cli-gh-to-all-four-workspace-/) |
 | 260716-ary | CLAUDE_CONFIG_DIR in all 4 templates: agent env exports the physical shared dir (not the ~/.claude symlink) so GSD ≥ 1.7.0's write-confinement guard passes and /gsd-update needs no --config-dir; startup_script migrates shared dot-claude.json → dot-claude/.claude.json once (legacy path kept as symlink); terraform validate + fmt gate passed | 2026-07-16 | 4fcc693 | [260716-ary-wire-claude-config-dir-into-all-four-wor](./quick/260716-ary-wire-claude-config-dir-into-all-four-wor/) |
 | 260716-cef | Shared `modules/bbj-base/` Terraform module in coder-bbj-private (agent + Claude/GSD house pattern + home volume + container + editor modules; extra_env/extra_startup_script/extra_volumes/port inputs); bbj-dev rewritten as thin consumer (−332 lines); push-templates.sh stages modules/ into consuming template dirs; bbj-services untouched; private-repo commits 0b882fd/a466aab/0d07bba | 2026-07-16 | 0d07bba (coder-bbj-private) | [260716-cef-extract-shared-bbj-base-module-from-bbj-](./quick/260716-cef-extract-shared-bbj-base-module-from-bbj-/) |
+| 260717-73u | bbj-ls-dev rebased on the bbj-services/bbj-dev pattern: multi-stage Dockerfile bakes coder-owned `/opt/bbx` from `/mnt/bbj-assets` context (Dockerfile.bbj-ls-dev), JDK 17+21 always + combo JDK (default = production BBj 26.01 · JDK 25), main.tf onto `modules/bbj-base` with 6 `moved` blocks (home-volume data safety), BBjServices coder_script + coder_app :8888, push-templates.sh stages Dockerfile.bbj-ls-dev + license/host-port vars; terraform validate passed (dockerized 1.9); private-repo commits 121ab63/51f2141/2df597f | 2026-07-17 | 2df597f (coder-bbj-private) | [260717-73u-rebase-bbj-ls-dev-on-bbj-services-patter](./quick/260717-73u-rebase-bbj-ls-dev-on-bbj-services-patter/) |
 
 ## Deferred Items
 
