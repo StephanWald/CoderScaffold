@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-17 — Completed quick task 260717-73u: bbj-ls-dev rebased with baked BBj install (coder-bbj-private)
+Last activity: 2026-07-17 — Completed quick task 260717-gcc: extension-test IDE (VSIX code-server) in bbj-ls-dev (coder-bbj-private)
 
 ## Performance Metrics
 
@@ -129,6 +129,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260716-ary | CLAUDE_CONFIG_DIR in all 4 templates: agent env exports the physical shared dir (not the ~/.claude symlink) so GSD ≥ 1.7.0's write-confinement guard passes and /gsd-update needs no --config-dir; startup_script migrates shared dot-claude.json → dot-claude/.claude.json once (legacy path kept as symlink); terraform validate + fmt gate passed | 2026-07-16 | 4fcc693 | [260716-ary-wire-claude-config-dir-into-all-four-wor](./quick/260716-ary-wire-claude-config-dir-into-all-four-wor/) |
 | 260716-cef | Shared `modules/bbj-base/` Terraform module in coder-bbj-private (agent + Claude/GSD house pattern + home volume + container + editor modules; extra_env/extra_startup_script/extra_volumes/port inputs); bbj-dev rewritten as thin consumer (−332 lines); push-templates.sh stages modules/ into consuming template dirs; bbj-services untouched; private-repo commits 0b882fd/a466aab/0d07bba | 2026-07-16 | 0d07bba (coder-bbj-private) | [260716-cef-extract-shared-bbj-base-module-from-bbj-](./quick/260716-cef-extract-shared-bbj-base-module-from-bbj-/) |
 | 260717-73u | bbj-ls-dev rebased on the bbj-services/bbj-dev pattern: multi-stage Dockerfile bakes coder-owned `/opt/bbx` from `/mnt/bbj-assets` context (Dockerfile.bbj-ls-dev), JDK 17+21 always + combo JDK (default = production BBj 26.01 · JDK 25), main.tf onto `modules/bbj-base` with 6 `moved` blocks (home-volume data safety), BBjServices coder_script + coder_app :8888, push-templates.sh stages Dockerfile.bbj-ls-dev + license/host-port vars; terraform validate passed (dockerized 1.9); private-repo commits 121ab63/51f2141/2df597f | 2026-07-17 | 2df597f (coder-bbj-private) | [260717-73u-rebase-bbj-ls-dev-on-bbj-services-patter](./quick/260717-73u-rebase-bbj-ls-dev-on-bbj-services-patter/) |
+| 260717-gcc | Extension-test IDE in bbj-ls-dev: standalone code-server 4.129.0 baked at `/opt/code-server-test` (`code-server-test`, never shadows the module editor) + `bbj-ext-install` helper (npx vsce package → VSIX → install into isolated `~/.ext-test`), coder_script on :13338 opening `~/repos/bbj-language-server/examples` + coder_app "VS Code (ext test)" with /healthz; dev loop edit → bbj-ext-install → reload tab; terraform validate passed (dockerized 1.9); private-repo commits eccb6fc/badaf09 | 2026-07-17 | badaf09 (coder-bbj-private) | [260717-gcc-baked-vsix-extension-test-code-server-in](./quick/260717-gcc-baked-vsix-extension-test-code-server-in/) |
 
 ## Deferred Items
 
