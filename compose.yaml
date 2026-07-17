@@ -33,15 +33,15 @@ services:
       retries: 5
       start_period: 30s
     # The coder user needs write access to the mounted Docker socket (below) to
-    # provision workspaces. Set group_add to the socket's group ID:
+    # provision workspaces. Set DOCKER_GROUP_GID in .env to the socket's group ID
+    # (keeps the setting out of this tracked file, so git pull never reverts it):
     #   - Docker Desktop (macOS/Windows): the socket is root-owned inside the
-    #     container, so use GID 0 (the default set below).
-    #   - Linux: use the host's docker group GID instead. Find it with
-    #     `stat -c '%g' /var/run/docker.sock` (commonly 999 or 998) and replace
-    #     the value below. (macOS host stat uses `stat -f '%g'`, but on Docker
-    #     Desktop the in-container GID is 0 regardless — see README.)
+    #     container, so GID 0 (the default) is correct — nothing to set.
+    #   - Linux: set DOCKER_GROUP_GID to the host's docker group GID. Find it
+    #     with `stat -c '%g' /var/run/docker.sock` (commonly 999 or 998), then
+    #     `docker compose up -d --force-recreate coder` to apply.
     group_add:
-      - "0" # Docker Desktop (macOS/Windows). Linux: set to host docker group GID.
+      - "${DOCKER_GROUP_GID:-0}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Run "docker volume rm coder_coder_home" to reset the dev tunnel url (https://abc.xyz.try.coder.app).

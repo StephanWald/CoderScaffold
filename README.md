@@ -568,20 +568,21 @@ seen inside the running `coder` container** (this is the number `group_add` must
 docker compose exec coder stat -c '%g' /var/run/docker.sock
 ```
 
-Then, in `compose.yaml`, set the `group_add` value to that number and restart:
+Then set `DOCKER_GROUP_GID` to that number in your (gitignored) `.env` and recreate the
+container — the setting lives in `.env` so a `git pull` never reverts it:
 
-```yaml
-group_add:
-  - "0"  # replace with the GID printed by the command above
-```
 ```bash
-docker compose up -d coder
+echo 'DOCKER_GROUP_GID=999' >> .env   # the GID printed by the command above
+docker compose up -d --force-recreate coder
 ```
+
+(A plain `docker compose restart` is **not** enough — `group_add` only applies when the
+container is recreated. Verify with `docker compose exec coder id`, which should list the GID.)
 
 **Docker Desktop (macOS / Windows):** The socket is proxied through the Docker Desktop VM and
 appears **root-owned (GID `0`) inside the container**, regardless of what the macOS/Windows host
-reports — so the value is `0`. `compose.yaml` ships with `group_add: ["0"]` as the default for
-this reason. Note: the macOS host `stat` command is `stat -f '%g'` (BSD), not `stat -c '%g'`
+reports — so the default (`DOCKER_GROUP_GID` unset → GID `0`) is correct and nothing needs to be
+set. Note: the macOS host `stat` command is `stat -f '%g'` (BSD), not `stat -c '%g'`
 (GNU) — but the host value does not apply here; use the in-container command above.
 
 **Linux:** The socket is owned by the host's `docker` group. Use that GID (commonly `999`, or
