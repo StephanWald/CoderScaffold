@@ -134,6 +134,7 @@ None. All planned work for milestone v1.1 is complete.
 | fast | Env-driven Docker socket GID: compose.yaml group_add now `${DOCKER_GROUP_GID:-0}` (default keeps Docker Desktop working); documented in .env.example + README (Linux: set once in gitignored .env, `--force-recreate` required) — survives git pull | 2026-07-17 | e888350 | — |
 | fast | bbj-ls-dev ext-test IDE: seed profile settings.json once (bbj.home=/opt/bbx, em.url + interop pinned to 127.0.0.1:5008 — BBjServices binds interop to IPv4 loopback only, Node resolves localhost→::1 and gets refused); README gotcha note; terraform validate passed | 2026-07-18 | 62becf2 (coder-bbj-private) | — |
 | fast | bbj-ls-dev: idempotent `~/BBJ` → `/opt/bbx` symlink in extra_startup_script — examples/project.properties hardcodes classpath=~/BBJ/lib/* + PREFIX ~/BBJ/… and overrides bbj.classpath, so without it BBj classes degrade to synthetic stubs (BBjAPI() ok, methods unknown); README note; terraform validate passed | 2026-07-18 | 54a1abd (coder-bbj-private) | — |
+| fast | Reverted 54a1abd (`~/BBJ` symlink workaround) — root cause fixed upstream instead: project.properties removed from bbj-language-server examples, so the LS falls back to the bbj.classpath setting and the template needs no special handling | 2026-07-18 | 8e8e5df (coder-bbj-private) | — |
 
 ## Deferred Items
 
