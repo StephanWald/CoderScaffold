@@ -14,6 +14,13 @@
 # NOT abort the rest — the loop continues and the script exits 1 at the end, naming every
 # failed template.
 #
+# Lockfile guard: before pushing, each template dir is checked for a committed
+# .terraform.lock.hcl. A missing lockfile triggers a loud warn plus a dockerized
+# `terraform init` + `providers lock` auto-generation attempt (three platforms:
+# linux_amd64, linux_arm64, darwin_arm64). If the docker binary is missing or
+# generation fails, the guard warns and the push proceeds anyway — a lockfile
+# problem never causes a non-zero exit or blocks a push.
+#
 # LIVE VERIFICATION DEFERRED — see note below.
 #
 # Exit codes:
@@ -29,6 +36,11 @@ set -euo pipefail
 # performed. LIVE verification (auth flow + actual template push against a real Coder
 # server) is DEFERRED to an environment that has the coder CLI installed and a running
 # Coder server. Per project memory: "Infra needs a live deploy gate."
+#
+# The ensure_template_lockfile guard's dockerized generation path was spot-checked
+# in isolation (deliberately-removed lockfile regenerated, .terraform cleaned up).
+# The full script (auth + push, including the guard invoked inline in the loop)
+# remains part of the same LIVE VERIFICATION DEFERRED scope above.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -102,6 +114,56 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Lockfile guard — ensure_template_lockfile
+#
+# Coder cannot cache providers for a template push whose directory lacks a
+# committed .terraform.lock.hcl ("No .terraform.lock.hcl file found" warning
+# from `coder templates push`). This guard is advisory only and NEVER blocks
+# a push: it warns loudly to stderr and attempts a dockerized `terraform init`
+# + `providers lock` (linux_amd64, linux_arm64, darwin_arm64) to regenerate
+# the missing file. If docker is unavailable, or either dockerized step fails,
+# it warns and returns 0 so the push proceeds without a lockfile. The
+# .terraform/ provider/module cache created by init is always removed before
+# returning — it must never be uploaded as part of a template push. Any
+# lockfile this function generates is deliberately left as untracked git
+# drift on the host; that is the intended nudge for the operator to commit it.
+# ---------------------------------------------------------------------------
+ensure_template_lockfile() {
+  local dir="${1%/}"
+  local name
+  name="$(basename "${dir}")"
+
+  if [[ -f "${dir}/.terraform.lock.hcl" ]]; then
+    return 0
+  fi
+
+  echo "WARN: ${name} has no committed .terraform.lock.hcl — Coder will be unable to cache providers without one. Attempting to auto-generate; if successful, COMMIT the generated lockfile to git." >&2
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "WARN: docker not found on PATH — cannot auto-generate a lockfile for ${name}; pushing without one." >&2
+    return 0
+  fi
+
+  echo "Generating .terraform.lock.hcl for ${name} via dockerized terraform (this may take a minute)..."
+
+  if ! docker run --rm --user "$(id -u):$(id -g)" -v "${dir}:/tf" -w /tf hashicorp/terraform:1.9 init -backend=false -input=false; then
+    echo "WARN: dockerized 'terraform init' failed for ${name} — cannot generate a lockfile; pushing without one." >&2
+    rm -rf "${dir}/.terraform"
+    return 0
+  fi
+
+  if ! docker run --rm --user "$(id -u):$(id -g)" -v "${dir}:/tf" -w /tf hashicorp/terraform:1.9 providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64; then
+    echo "WARN: dockerized 'terraform providers lock' failed for ${name} — cannot generate a lockfile; pushing without one." >&2
+    rm -rf "${dir}/.terraform"
+    return 0
+  fi
+
+  rm -rf "${dir}/.terraform"
+  echo "NOTE: generated ${dir}/.terraform.lock.hcl for ${name} — please commit it to git."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Discover and push all templates
 #
 # Loop over immediate subdirectories of templates/.
@@ -130,6 +192,11 @@ for dir in "${PROJECT_ROOT}"/templates/*/; do
 
   found_any=1
   echo "Pushing template: ${name} (from ${dir%/})"
+
+  # Lockfile guard: warns + attempts dockerized auto-generation if missing.
+  # Always returns 0 — a lockfile problem never blocks a push (see function
+  # comment above for details).
+  ensure_template_lockfile "${dir}"
 
   # Base push args. Seeded with --directory/--yes so the array is never empty
   # (a bare "${arr[@]}" on an empty array aborts under `set -u` on bash 3.2 / macOS).
