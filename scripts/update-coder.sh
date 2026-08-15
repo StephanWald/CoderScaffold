@@ -11,6 +11,11 @@
 #   3. docker compose pull coder  +  docker compose up -d   (recreates coder only;
 #      database is unchanged and keeps running).
 #   4. Wait for the coder service healthcheck to go healthy, then report the version.
+#   5. Align the host 'coder' CLI with the new server version (via the server's own
+#      install.sh when CODER_ACCESS_URL is set, otherwise the official installer
+#      pinned to the target version) so 'coder templates push' from this host does
+#      not warn about a client/server version mismatch. This step is warn-only —
+#      it never changes the script's exit code.
 #
 # Only the Coder control plane restarts (brief downtime). Running workspaces are
 # separate containers and are unaffected.
@@ -20,16 +25,21 @@
 #   ./scripts/update-coder.sh               # re-pull/recreate the currently pinned version
 #   ./scripts/update-coder.sh --check       # show current + latest release, then exit
 #   ./scripts/update-coder.sh <version> --push-templates   # also re-push templates after
+#   ./scripts/update-coder.sh <version> --no-cli-update  # leave the host CLI alone
 #
 # Flags:
 #   --check            Print the current pinned version and the latest GitHub release; exit.
 #   --no-backup        Skip the pre-update DB backup (NOT recommended).
 #   --push-templates   After a healthy upgrade, run scripts/push-templates.sh.
+#   --no-cli-update    Skip the post-upgrade host 'coder' CLI version alignment.
 #   --dry-run          Print the actions that would be taken; change nothing.
 #   -h, --help         Show this help.
 #
 # Exit codes:
-#   0  — update completed and coder is healthy (or --check / --help / --dry-run)
+#   0  — update completed and coder is healthy (or --check / --help / --dry-run).
+#        A failed host CLI update (Step 5/5) is a WARN only and does not change
+#        this exit code. The installer may need root or passwordless sudo; for
+#        unattended runs without it, pass --no-cli-update.
 #   1  — bad usage, missing docker/compose, backup failed, pull failed, or coder
 #        did not become healthy within the timeout
 #
@@ -38,6 +48,8 @@
 #   The coder CLI / a running Coder stack are not available in the dev container
 #   where this script was authored. Static checks (bash -n, shellcheck) were run.
 #   The pull/recreate/health path is DEFERRED to a host with the stack running.
+#   The new host CLI alignment path (Step 5/5) is likewise statically checked
+#   only — no live installer run from the authoring environment.
 #   Per project memory: "Infra needs a live deploy gate."
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -63,7 +75,7 @@ PUSH_TEMPLATES=0
 DRY_RUN=0
 TARGET_VERSION=""
 
-usage() { sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
