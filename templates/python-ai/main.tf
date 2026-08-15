@@ -341,6 +341,50 @@ resource "coder_agent" "main" {
       mempalace init "$PROJECT_DIR" \
         || echo "WARN: mempalace init failed; continuing" >&2
     fi
+
+    # ── PostgreSQL + pgvector — start on the persistent home volume ───────────
+    # docker_container is ephemeral (recreated on every stop/start); only
+    # /home/coder persists. PGDATA therefore lives at ~/.pgdata, NOT the
+    # Debian-managed cluster baked into the image (which is dropped at build
+    # time — see the Dockerfile). Every step below is idempotent and, per
+    # WR-03, non-fatal: a Postgres problem must never abort the startup_script.
+    PGDATA_DIR="$HOME/.pgdata"
+    PG_BIN=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1)
+    if [ -n "$PG_BIN" ] && [ -x "$PG_BIN/pg_ctl" ]; then
+      # Socket-dir safety net — the Dockerfile already chowns this, but /run
+      # can be a tmpfs that resets on some hosts. Non-fatal: a missing
+      # passwordless sudo must not abort startup.
+      if [ ! -w /var/run/postgresql ]; then
+        sudo install -d -o coder -g coder -m 0775 /var/run/postgresql \
+          || echo "WARN: could not fix /var/run/postgresql ownership; continuing" >&2
+      fi
+
+      # First-start init only.
+      if [ ! -f "$PGDATA_DIR/PG_VERSION" ]; then
+        "$PG_BIN/initdb" -D "$PGDATA_DIR" -U coder --encoding=UTF8 --locale=C.UTF-8 \
+          || echo "WARN: initdb failed; continuing" >&2
+      fi
+
+      # Idempotent start — only if initialized and not already running. A
+      # stale postmaster.pid from an unclean container kill is handled by
+      # pg_ctl itself (it detects the dead PID and starts anyway).
+      if [ -f "$PGDATA_DIR/PG_VERSION" ] && ! "$PG_BIN/pg_ctl" -D "$PGDATA_DIR" status >/dev/null 2>&1; then
+        "$PG_BIN/pg_ctl" -D "$PGDATA_DIR" -l "$HOME/.pgdata.log" -w start \
+          || echo "WARN: postgres failed to start; see ~/.pgdata.log; continuing" >&2
+      fi
+
+      # Generic dev database — name is intentionally generic, not project-specific.
+      if [ "$("$PG_BIN/psql" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='coder'" 2>/dev/null)" != "1" ]; then
+        "$PG_BIN/createdb" coder \
+          || echo "WARN: createdb coder failed; continuing" >&2
+      fi
+
+      # Enable the extension every start (idempotent by construction).
+      "$PG_BIN/psql" -d coder -c "CREATE EXTENSION IF NOT EXISTS vector;" >/dev/null 2>&1 \
+        || echo "WARN: could not enable pgvector extension; continuing" >&2
+    else
+      echo "WARN: PostgreSQL not found in the image; skipping database setup" >&2
+    fi
   EOT
 
   env = {
@@ -359,6 +403,13 @@ resource "coder_agent" "main" {
     UV_PYTHON_INSTALL_DIR = "/opt/uv-python"
     UV_TOOL_DIR           = "/opt/uv-tools"
     UV_TOOL_BIN_DIR       = "/usr/local/bin"
+
+    # Postgres is set system-wide in /etc/profile.d/20-postgres.sh for login
+    # shells (see Dockerfile). Export the same vars here for non-login-shell
+    # parity (agent shell, coder_script, IDE terminals) — same rationale as
+    # the UV_* vars above.
+    PGDATA       = "/home/coder/.pgdata"
+    DATABASE_URL = "postgresql://coder@localhost:5432/coder"
   }
 
   metadata {
