@@ -349,7 +349,7 @@ resource "coder_agent" "main" {
 
     # uv install dirs are set system-wide in /etc/profile.d/10-uv.sh for login
     # shells. Export the same vars here for non-login-shell parity (agent shell,
-    # coder_script, etc.) — same rationale as JAVA_HOME/MAVEN_HOME in java-fullstack.
+    # coder_script, etc.) — same rationale as toolchain homes in the java-fullstack template.
     UV_PYTHON_INSTALL_DIR = "/opt/uv-python"
     UV_TOOL_DIR           = "/opt/uv-tools"
     UV_TOOL_BIN_DIR       = "/usr/local/bin"
