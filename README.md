@@ -409,7 +409,8 @@ workspaces are separate containers and keep running.
 ### With the script (recommended)
 
 `scripts/update-coder.sh` backs up the database first (aborting if the backup fails), pins the new
-version in `.env`, pulls, recreates, and waits for the healthcheck:
+version in `.env`, pulls, recreates, waits for the healthcheck, then aligns the host `coder` CLI
+with the new server version.
 
 ```bash
 # See what you're on and what's available
@@ -421,6 +422,10 @@ version in `.env`, pulls, recreates, and waits for the healthcheck:
 # Optionally re-push templates afterwards, or preview without changing anything
 ./scripts/update-coder.sh v2.33.9 --push-templates
 ./scripts/update-coder.sh v2.33.9 --dry-run
+
+# Skip the host CLI alignment (it's warn-only and may need sudo); useful for
+# unattended runs without passwordless sudo
+./scripts/update-coder.sh v2.33.9 --no-cli-update
 ```
 
 Like the other scripts it is non-interactive and returns meaningful exit codes (`0` success, `1`

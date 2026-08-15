@@ -11,6 +11,11 @@
 #   3. docker compose pull coder  +  docker compose up -d   (recreates coder only;
 #      database is unchanged and keeps running).
 #   4. Wait for the coder service healthcheck to go healthy, then report the version.
+#   5. Align the host 'coder' CLI with the new server version (via the server's own
+#      install.sh when CODER_ACCESS_URL is set, otherwise the official installer
+#      pinned to the target version) so 'coder templates push' from this host does
+#      not warn about a client/server version mismatch. This step is warn-only —
+#      it never changes the script's exit code.
 #
 # Only the Coder control plane restarts (brief downtime). Running workspaces are
 # separate containers and are unaffected.
@@ -20,16 +25,21 @@
 #   ./scripts/update-coder.sh               # re-pull/recreate the currently pinned version
 #   ./scripts/update-coder.sh --check       # show current + latest release, then exit
 #   ./scripts/update-coder.sh <version> --push-templates   # also re-push templates after
+#   ./scripts/update-coder.sh <version> --no-cli-update  # leave the host CLI alone
 #
 # Flags:
 #   --check            Print the current pinned version and the latest GitHub release; exit.
 #   --no-backup        Skip the pre-update DB backup (NOT recommended).
 #   --push-templates   After a healthy upgrade, run scripts/push-templates.sh.
+#   --no-cli-update    Skip the post-upgrade host 'coder' CLI version alignment.
 #   --dry-run          Print the actions that would be taken; change nothing.
 #   -h, --help         Show this help.
 #
 # Exit codes:
-#   0  — update completed and coder is healthy (or --check / --help / --dry-run)
+#   0  — update completed and coder is healthy (or --check / --help / --dry-run).
+#        A failed host CLI update (Step 5/5) is a WARN only and does not change
+#        this exit code. The installer may need root or passwordless sudo; for
+#        unattended runs without it, pass --no-cli-update.
 #   1  — bad usage, missing docker/compose, backup failed, pull failed, or coder
 #        did not become healthy within the timeout
 #
@@ -38,6 +48,8 @@
 #   The coder CLI / a running Coder stack are not available in the dev container
 #   where this script was authored. Static checks (bash -n, shellcheck) were run.
 #   The pull/recreate/health path is DEFERRED to a host with the stack running.
+#   The new host CLI alignment path (Step 5/5) is likewise statically checked
+#   only — no live installer run from the authoring environment.
 #   Per project memory: "Infra needs a live deploy gate."
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -58,16 +70,18 @@ DEFAULT_REPO="ghcr.io/coder/coder"
 # ---------------------------------------------------------------------------
 CHECK_ONLY=0
 DO_BACKUP=1
+DO_CLI_UPDATE=1
 PUSH_TEMPLATES=0
 DRY_RUN=0
 TARGET_VERSION=""
 
-usage() { sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --check|check)     CHECK_ONLY=1 ;;
     --no-backup)       DO_BACKUP=0 ;;
+    --no-cli-update)   DO_CLI_UPDATE=0 ;;
     --push-templates)  PUSH_TEMPLATES=1 ;;
     --dry-run)         DRY_RUN=1 ;;
     -h|--help)         usage; exit 0 ;;
@@ -155,7 +169,8 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   echo "[dry-run] would: backup DB$([[ ${DO_BACKUP} -eq 0 ]] && echo ' (skipped)') →"
   echo "[dry-run]        pin CODER_VERSION=${TARGET_VERSION} in .env →"
   echo "[dry-run]        docker compose pull coder → docker compose up -d →"
-  echo "[dry-run]        wait for healthy$([[ ${PUSH_TEMPLATES} -eq 1 ]] && echo ' → push templates')"
+  echo "[dry-run]        wait for healthy →"
+  echo "[dry-run]        align host coder CLI to ${TARGET_VERSION}$([[ ${DO_CLI_UPDATE} -eq 0 ]] && echo ' (skipped)')$([[ ${PUSH_TEMPLATES} -eq 1 ]] && echo ' → push templates')"
   exit 0
 fi
 
@@ -165,7 +180,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "${DO_BACKUP}" -eq 1 ]]; then
   if [[ -n "$(docker compose ps -q database 2>/dev/null)" ]]; then
-    echo "Step 1/4: backing up the database before upgrading..."
+    echo "Step 1/5: backing up the database before upgrading..."
     if ! "${SCRIPT_DIR}/backup.sh"; then
       echo "ERROR: pre-update backup failed — aborting upgrade (no changes made)." >&2
       exit 1
@@ -174,13 +189,13 @@ if [[ "${DO_BACKUP}" -eq 1 ]]; then
     echo "WARN: database service is not running; skipping pre-update backup." >&2
   fi
 else
-  echo "Step 1/4: pre-update backup SKIPPED (--no-backup)."
+  echo "Step 1/5: pre-update backup SKIPPED (--no-backup)."
 fi
 
 # ---------------------------------------------------------------------------
 # Step 2: pin CODER_VERSION in .env (preserve everything else)
 # ---------------------------------------------------------------------------
-echo "Step 2/4: pinning CODER_VERSION=${TARGET_VERSION} in .env..."
+echo "Step 2/5: pinning CODER_VERSION=${TARGET_VERSION} in .env..."
 if [[ -f "${ENV_FILE}" ]]; then
   if grep -qE '^[[:space:]]*CODER_VERSION=' "${ENV_FILE}"; then
     tmp="$(mktemp)"
@@ -198,7 +213,7 @@ export CODER_VERSION="${TARGET_VERSION}"
 # ---------------------------------------------------------------------------
 # Step 3: pull the new image and recreate the coder service
 # ---------------------------------------------------------------------------
-echo "Step 3/4: pulling ${CODER_REPO}:${TARGET_VERSION} and recreating coder..."
+echo "Step 3/5: pulling ${CODER_REPO}:${TARGET_VERSION} and recreating coder..."
 if ! docker compose pull coder; then
   echo "ERROR: 'docker compose pull coder' failed (bad tag or registry/network issue)." >&2
   echo "       .env was pinned to ${TARGET_VERSION}; revert it if this tag does not exist." >&2
@@ -209,7 +224,7 @@ docker compose up -d
 # ---------------------------------------------------------------------------
 # Step 4: wait for the coder healthcheck to report healthy
 # ---------------------------------------------------------------------------
-echo "Step 4/4: waiting for coder to become healthy..."
+echo "Step 4/5: waiting for coder to become healthy..."
 CID="$(docker compose ps -q coder)"
 if [[ -z "${CID}" ]]; then
   echo "ERROR: coder container not found after 'up -d'." >&2; exit 1
@@ -238,6 +253,55 @@ done
 RUNNING_VERSION="$(docker compose exec -T coder coder version 2>/dev/null | head -1 || true)"
 
 # ---------------------------------------------------------------------------
+# Step 5: align the host 'coder' CLI with the new server version
+# Prevents "version mismatch: client vX, server vY" on the next
+# scripts/push-templates.sh run from this host. Never fails the upgrade —
+# any failure here is a WARN, and the script still exits 0.
+# ---------------------------------------------------------------------------
+HOST_CLI_AFTER=""
+if [[ "${DO_CLI_UPDATE}" -eq 0 ]]; then
+  echo "Step 5/5: host CLI update SKIPPED (--no-cli-update)."
+elif ! command -v coder >/dev/null 2>&1; then
+  echo "WARN: no 'coder' CLI found on PATH; nothing to align." >&2
+  echo "      If this host pushes templates, scripts/push-templates.sh will fail-fast" >&2
+  echo "      with install instructions." >&2
+else
+  HOST_CLI_VERSION="$(coder version 2>/dev/null | head -1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+  if [[ "${HOST_CLI_VERSION}" == "${TARGET_VERSION}" ]]; then
+    echo "Step 5/5: host coder CLI already matches ${TARGET_VERSION}."
+    HOST_CLI_AFTER="${HOST_CLI_VERSION}"
+  else
+    echo "Step 5/5: aligning host coder CLI ${HOST_CLI_VERSION:-unknown} → ${TARGET_VERSION}..."
+    CLI_INSTALL_OK=0
+    if [[ -n "${CODER_ACCESS_URL:-}" ]]; then
+      # Prefer the server's own installer — guarantees an exact server match.
+      CLI_INSTALL_HINT="curl -fsSL ${CODER_ACCESS_URL%/}/install.sh | sh"
+      if curl -fsSL --max-time 60 "${CODER_ACCESS_URL%/}/install.sh" | sh; then
+        CLI_INSTALL_OK=1
+      fi
+    else
+      CLI_INSTALL_HINT="curl -fsSL https://coder.com/install.sh | sh -s -- --version ${TARGET_VERSION#v}"
+      if curl -fsSL --max-time 60 https://coder.com/install.sh | sh -s -- --version "${TARGET_VERSION#v}"; then
+        CLI_INSTALL_OK=1
+      fi
+    fi
+    if [[ "${CLI_INSTALL_OK}" -eq 1 ]]; then
+      hash -r 2>/dev/null || true
+      HOST_CLI_AFTER="$(coder version 2>/dev/null | head -1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+      if [[ "${HOST_CLI_AFTER}" == "${TARGET_VERSION}" ]]; then
+        echo "Step 5/5: host coder CLI updated to ${HOST_CLI_AFTER}."
+      else
+        echo "WARN: host coder CLI install ran but reports '${HOST_CLI_AFTER:-unknown}', expected ${TARGET_VERSION}." >&2
+        echo "      Run manually: ${CLI_INSTALL_HINT}" >&2
+      fi
+    else
+      echo "WARN: host coder CLI update failed (may need root/sudo to write to /usr/local/bin)." >&2
+      echo "      Run manually: ${CLI_INSTALL_HINT}" >&2
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Optional: re-push templates after a successful upgrade
 # ---------------------------------------------------------------------------
 if [[ "${PUSH_TEMPLATES}" -eq 1 ]]; then
@@ -252,6 +316,7 @@ echo ""
 echo "Coder update complete."
 echo "  Pinned version : ${TARGET_VERSION}"
 [[ -n "${RUNNING_VERSION}" ]] && echo "  Reported       : ${RUNNING_VERSION}"
+[[ -n "${HOST_CLI_AFTER}" ]] && echo "  Host CLI       : ${HOST_CLI_AFTER}"
 echo ""
 echo "CODER_UPDATED_TO=${TARGET_VERSION} PREVIOUS=${CURRENT_VERSION}"
 echo ""
