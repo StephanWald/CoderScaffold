@@ -157,6 +157,12 @@ resource "coder_agent" "main" {
   arch = data.coder_provisioner.me.arch
   os   = "linux"
 
+  # The vscode-desktop registry module below provides the folder-aware VS Code
+  # Desktop button; disable the agent's built-in one so it isn't shown twice.
+  display_apps {
+    vscode = false
+  }
+
   startup_script = <<-EOT
     set -e
     # Seed home from /etc/skel on the very first workspace start (idempotent).
