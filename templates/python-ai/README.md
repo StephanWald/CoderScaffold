@@ -32,6 +32,8 @@ plus AI SDKs and JupyterLab.
 - **GSD** (gsd-core) — installed once into the per-owner shared Claude volume.
 - **Optional git clone** — prompted at workspace creation; when supplied, the repo is cloned
   on first start and all editors open that checkout.
+- **PostgreSQL + pgvector** — a persistent local vector store baked into the image and started
+  by the agent, no Docker-in-Docker required.
 
 ## Why toolchains live in /opt (not /home/coder)
 
@@ -39,6 +41,47 @@ plus AI SDKs and JupyterLab.
 at image build time. Every `uv` install, Python shim, and tool binary targets `/opt/uv-python`,
 `/opt/uv-tools`, or `/usr/local/bin` — outside the volume mount — so the toolchain is present
 from the very first shell in every workspace, even after a fresh start.
+
+## PostgreSQL + pgvector
+
+The workspace ships a local, persistent PostgreSQL database with the `pgvector` extension
+pre-installed — a local vector store for AI/RAG work.
+
+**What ships:** PostgreSQL (Ubuntu default, currently 18.x) + `postgresql-contrib` + the
+matching `pgvector` package, baked into the image at build time. The major version is derived
+at build time (never hardcoded), so a base-image bump picks up the new default automatically.
+
+**Connecting:** `psql -d coder` just works — no host/port/password needed. `DATABASE_URL` and
+`PGDATA` are exported in every shell (login shells via `/etc/profile.d/20-postgres.sh`, and
+non-login contexts — the agent shell, `coder_script`s, IDE terminals — via the agent env). The
+`coder` OS user is the database superuser (created by `initdb -U coder`); this is a
+single-tenant workspace with no privilege boundary intended between the user and their own data.
+
+**Why it isn't a container:** Docker-in-Docker is structurally unavailable in this workspace
+container — no `NET_ADMIN`, no user namespaces. Live-probed symptoms: `iptables -t nat -N DOCKER`
+fails with `Permission denied`, and `unshare: operation not permitted` kills image extraction. No
+daemon flag fixes it. Do not retry running Postgres (or anything else) as a nested container here
+— bake it into the image instead, as this template does.
+
+**Persistence model:** the database cluster lives at `~/.pgdata`, on the persistent
+`/home/coder` volume, so it survives workspace stop/start (container recreation). Deleting the
+*workspace* deletes the home volume, and therefore the data — use `pg_dump` for anything worth
+keeping long-term. The Debian-managed cluster at `/var/lib/postgresql/<major>/main` is
+deliberately dropped from the image at build time; it is not used and would be wiped on every
+restart if it were.
+
+**Ops one-liners** (PGDATA is already exported):
+
+```bash
+pg_ctl -D "$PGDATA" status                          # is it running?
+pg_ctl -D "$PGDATA" -l ~/.pgdata.log -w start        # start (agent already does this)
+pg_ctl -D "$PGDATA" stop                             # stop
+psql -d coder -c "CREATE EXTENSION IF NOT EXISTS vector;"  # enable pgvector in another db you create
+```
+
+**Scope:** the port is NOT published to the host — `docker_container.workspace` exposes no
+ports. The server is reachable only from inside the workspace container (and via
+`coder port-forward` if you need host access).
 
 ## Cloning a private repository (SSH)
 
@@ -92,3 +135,7 @@ deferred per project memory: "Infra needs a live deploy gate."
 - [ ] JupyterLab app button appears in the workspace and launches JupyterLab successfully
 - [ ] Confirm the vscode-desktop module (`registry.coder.com/coder/vscode-desktop/coder @ 1.1.0`) and jupyterlab module (`registry.coder.com/coder/jupyterlab/coder @ 1.1.0`) source/version pins resolve at push time; bump pins if the registry has newer versions or if either module does not exist (activate the commented `coder_app` fallback for JupyterLab)
 - [ ] Claude Code, webforJ MCP server, MemPalace MCP server, and GSD are all present and functional in the owner-shared volume
+- [ ] Workspace start brings Postgres up automatically; `psql -d coder -c 'SELECT 1'` succeeds
+- [ ] `SELECT extversion FROM pg_extension WHERE extname='vector'` returns a version in the `coder` db
+- [ ] Stop and restart the workspace: a table created before the restart is still present (persistence gate)
+- [ ] Second/third start emits no startup_script errors (idempotence gate)
