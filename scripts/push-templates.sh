@@ -107,7 +107,9 @@ else
     echo "NOTE: CODER_SESSION_TOKEN not set — interactive coder login requires a TTY." >&2
   fi
 
-  if ! coder login "${login_args[@]}"; then
+  # ${arr[@]+...} guard: a bare "${login_args[@]}" on an empty array aborts under
+  # `set -u` on bash 3.2 (macOS). Empty when neither URL nor token is configured.
+  if ! coder login ${login_args[@]+"${login_args[@]}"}; then
     echo "ERROR: coder login failed; cannot push templates." >&2
     exit 1
   fi
