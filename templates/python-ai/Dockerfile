@@ -78,17 +78,24 @@ RUN set -eux; \
 # (the same interpreter /usr/local/bin/python points to) so `python -c "import
 # anthropic, claude_agent_sdk"` succeeds in a fresh login shell with no venv
 # activation. Uses uv pip --python to target the exact interpreter; does NOT
-# --system into the base image's own Python.
+# --system into the base image's own Python. --break-system-packages is required:
+# uv-managed CPythons ship an EXTERNALLY-MANAGED marker and uv refuses to install
+# into them otherwise (live-verified failure without it, exit code 2).
 RUN set -eux; \
-    uv pip install --python /usr/local/bin/python anthropic claude-agent-sdk; \
+    uv pip install --break-system-packages --python /usr/local/bin/python anthropic claude-agent-sdk; \
     python -c "import anthropic; import claude_agent_sdk; print('AI SDK import OK')"
 
 # ── JupyterLab ───────────────────────────────────────────────────────────────
 # Installed as a uv tool (shim in /usr/local/bin) so `jupyter lab` is available
 # system-wide. Launched via the JupyterLab module (or coder_app fallback) in main.tf.
+# uv tool install only exposes jupyterlab's own executables (jupyter-lab,
+# jupyter-labextension, jupyter-labhub) — the bare `jupyter` launcher belongs to
+# the jupyter-core dependency and gets no shim, so link it from the tool venv.
 RUN set -eux; \
     UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install jupyterlab; \
-    command -v jupyter
+    ln -sf /opt/uv-tools/jupyterlab/bin/jupyter /usr/local/bin/jupyter; \
+    jupyter --version; \
+    command -v jupyter-lab
 
 # ── Git over SSH: host keys for common forges + accept-new fallback ──────────
 # Without this, an SSH clone (e.g. git@github.com:owner/repo.git, including the
