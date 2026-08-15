@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-07-17 — Completed quick task 260717-gcc: extension-test IDE (VSIX code-server) in bbj-ls-dev (coder-bbj-private)
+Last activity: 2026-08-15 — Completed quick task 260815-epv: new templates/python-ai/ Python+AI workspace template (uv-managed CPython selector, ruff/mypy/pytest/ipython, anthropic+claude-agent-sdk, JupyterLab, VS Code browser+Desktop, PyCharm Gateway)
 
 ## Performance Metrics
 
@@ -135,6 +135,7 @@ None. All planned work for milestone v1.1 is complete.
 | fast | bbj-ls-dev ext-test IDE: seed profile settings.json once (bbj.home=/opt/bbx, em.url + interop pinned to 127.0.0.1:5008 — BBjServices binds interop to IPv4 loopback only, Node resolves localhost→::1 and gets refused); README gotcha note; terraform validate passed | 2026-07-18 | 62becf2 (coder-bbj-private) | — |
 | fast | bbj-ls-dev: idempotent `~/BBJ` → `/opt/bbx` symlink in extra_startup_script — examples/project.properties hardcodes classpath=~/BBJ/lib/* + PREFIX ~/BBJ/… and overrides bbj.classpath, so without it BBj classes degrade to synthetic stubs (BBjAPI() ok, methods unknown); README note; terraform validate passed | 2026-07-18 | 54a1abd (coder-bbj-private) | — |
 | fast | Reverted 54a1abd (`~/BBJ` symlink workaround) — root cause fixed upstream instead: project.properties removed from bbj-language-server examples, so the LS falls back to the bbj.classpath setting and the template needs no special handling | 2026-07-18 | 8e8e5df (coder-bbj-private) | — |
+| 260815-epv | New `templates/python-ai/` Coder workspace template: forks java-fullstack, swaps JDK/Maven for a uv-managed Python toolchain — build-time `python_version` selector (3.13/3.12/3.11, runtime `uv python install` for others), ruff/mypy/pytest/ipython + JupyterLab (all `uv tool`, system PATH), anthropic+claude-agent-sdk importable from the default python, Node LTS; editors code-server + vscode-desktop + jetbrains-gateway(PY/PyCharm) + JupyterLab module; full Claude/webforJ+MemPalace MCP/GSD startup_script reused; all toolchain in /opt or /usr (self-audit green); `terraform fmt -check` + `terraform validate` PASS (all 5 modules resolved). LIVE build/push/IDE-launch DEFERRED (no coder CLI here) — checklist in template README + SUMMARY | 2026-08-15 | 3d3cc34 | [260815-epv-create-coder-python-ai-workspace-templat](./quick/260815-epv-create-coder-python-ai-workspace-templat/) |
 
 ## Deferred Items
 
