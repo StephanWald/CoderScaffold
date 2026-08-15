@@ -555,6 +555,36 @@ the clone may fail the first time (the startup step is non-fatal and idempotent)
 key, either **restart the workspace** (the clone retries because the directory doesn't exist yet) or
 just run the `git clone` manually once.
 
+### Python AI template
+
+The `templates/python-ai/` directory is a workspace template for **Python-first development**
+with first-class AI tooling. It mirrors the structure and proven idioms of the Java full-stack
+template (same Claude Code / MCP / GSD / MemPalace plumbing, same owner-shared volume pattern)
+with the Java/Maven toolchain replaced by:
+
+- **uv-managed CPython** — selectable at workspace creation (3.13, 3.12, or 3.11); build-time
+  selection produces a separate cached image per version. Other versions available at runtime
+  via `uv python install`.
+- **Pre-baked dev tools** — `ruff`, `mypy`, `pytest`, `ipython` (system-wide shims in
+  `/usr/local/bin`), plus `anthropic` + `claude-agent-sdk` importable from the default `python`
+  with no venv activation.
+- **JupyterLab** — available as an app button and via `jupyter lab` on PATH.
+- **VS Code** (browser + Desktop) + **PyCharm Professional** (JetBrains Gateway).
+
+```bash
+# Push it (or use ./scripts/push-templates.sh to push every template under templates/)
+coder templates push python-ai --directory templates/python-ai/ -y
+
+# Server-side display metadata (not Terraform-managed — set after the first push)
+coder templates edit python-ai \
+  --display-name "Python AI" \
+  --description "Python workspace: selectable CPython (3.13/3.12/3.11), ruff/mypy/pytest/ipython, anthropic + claude-agent-sdk, JupyterLab, VS Code, PyCharm, Claude Code + MCP + GSD." \
+  --icon "/icon/python.svg"
+```
+
+See `templates/python-ai/README.md` for the full feature list, push instructions, SSH clone
+notes, and the **DEFERRED LIVE-VERIFICATION CHECKLIST** that must be run on a real Coder host.
+
 ### Docker Socket Permissions
 
 If workspace provisioning fails with a permission error on `/var/run/docker.sock`, the `coder`
