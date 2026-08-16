@@ -14,6 +14,11 @@ services:
       # or 127.0.0.1 for non-Docker templates!
       CODER_ACCESS_URL: "${CODER_ACCESS_URL:-http://127.0.0.1:7080}" # CFG-03
       CODER_WILDCARD_ACCESS_URL: "${CODER_WILDCARD_ACCESS_URL:-}" # CFG-04; empty = wildcard apps disabled (quickstart)
+      # Login/session token lifetime (Coder default is 24h). Set to 168h = 7 days
+      # here. Coder refreshes the session on activity unless
+      # CODER_DISABLE_SESSION_EXPIRY_REFRESH=true, so this is effectively the
+      # idle/absolute cap before re-authentication is required.
+      CODER_SESSION_DURATION: "${CODER_SESSION_DURATION:-168h}"
       # Google login via OIDC (opt-in). Coder only ENABLES OIDC when
       # CODER_OIDC_CLIENT_ID is non-empty, so these defaults leave sign-in
       # off and the zero-config quickstart unaffected. Drop real credentials
