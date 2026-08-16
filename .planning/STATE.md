@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-15 — Completed quick task 260815-q5z: PostgreSQL + pgvector in python-ai template (persistent PGDATA on home volume)
-Previous activity: 2026-08-15 — Completed quick task 260815-epv: new templates/python-ai/ Python+AI workspace template (uv-managed CPython selector, ruff/mypy/pytest/ipython, anthropic+claude-agent-sdk, JupyterLab, VS Code browser+Desktop, PyCharm Gateway)
+Last activity: 2026-08-16 — Completed quick task 260816-7c0: Docker access in python-ai template via socket-mount (docker-outside-of-docker) — docker-ce-cli + compose plugin in image, host socket bind-mount + group_add
+Previous activity: 2026-08-15 — Completed quick task 260815-q5z: PostgreSQL + pgvector in python-ai template (persistent PGDATA on home volume)
 
 ## Performance Metrics
 
@@ -142,6 +142,7 @@ None. All planned work for milestone v1.1 is complete.
 | fast | bbj-ls-dev: idempotent `~/BBJ` → `/opt/bbx` symlink in extra_startup_script — examples/project.properties hardcodes classpath=~/BBJ/lib/* + PREFIX ~/BBJ/… and overrides bbj.classpath, so without it BBj classes degrade to synthetic stubs (BBjAPI() ok, methods unknown); README note; terraform validate passed | 2026-07-18 | 54a1abd (coder-bbj-private) | — |
 | fast | Reverted 54a1abd (`~/BBJ` symlink workaround) — root cause fixed upstream instead: project.properties removed from bbj-language-server examples, so the LS falls back to the bbj.classpath setting and the template needs no special handling | 2026-07-18 | 8e8e5df (coder-bbj-private) | — |
 | 260815-epv | New `templates/python-ai/` Coder workspace template: forks java-fullstack, swaps JDK/Maven for a uv-managed Python toolchain — build-time `python_version` selector (3.13/3.12/3.11, runtime `uv python install` for others), ruff/mypy/pytest/ipython + JupyterLab (all `uv tool`, system PATH), anthropic+claude-agent-sdk importable from the default python, Node LTS; editors code-server + vscode-desktop + jetbrains-gateway(PY/PyCharm) + JupyterLab module; full Claude/webforJ+MemPalace MCP/GSD startup_script reused; all toolchain in /opt or /usr (self-audit green); `terraform fmt -check` + `terraform validate` PASS (all 5 modules resolved). LIVE build/push/IDE-launch DEFERRED (no coder CLI here) — checklist in template README + SUMMARY | 2026-08-15 | 3d3cc34 | [260815-epv-create-coder-python-ai-workspace-templat](./quick/260815-epv-create-coder-python-ai-workspace-templat/) |
+| 260816-7c0 | python-ai: Docker access via socket-mount (docker-outside-of-docker) — `docker-ce-cli` + `docker-compose-plugin` baked from Docker's official apt repo (keyring, arch-aware; NO engine/containerd — nested DinD stays ruled out), `docker_group_id` variable (default 999, `stat -c '%g' /var/run/docker.sock` discovery), host `/var/run/docker.sock` bind-mount + `group_add` on `docker_container.workspace`, header comment updated; `terraform fmt -check` + `terraform validate` PASS. LIVE-VERIFY DEFERRED (push + workspace + `docker ps`/`docker compose up` smoke test + confirm host socket GID matches 999 + dev-container nesting caveat) — in SUMMARY | 2026-08-16 | f9a6459 | [260816-7c0-give-python-ai-template-docker-access-vi](./quick/260816-7c0-give-python-ai-template-docker-access-vi/) |
 
 ## Deferred Items
 
