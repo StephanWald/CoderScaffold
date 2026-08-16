@@ -175,11 +175,26 @@ RUN set -eux; \
     "/usr/lib/postgresql/$PG_MAJOR/bin/initdb" --version
 
 # ── Docker CLI + Compose plugin (docker-outside-of-docker) ───────────────────
-# This is docker-OUTSIDE-of-docker (DooD): the Docker CLI and Compose plugin
-# installed here talk to the HOST Docker daemon via the socket mounted by main.tf
-# (/var/run/docker.sock bind-mount). A nested engine is NOT installed and would
-# NOT work — see the PostgreSQL block above for why (no NET_ADMIN, no namespace
-# creation inside this workspace container). The socket mount means:
+# NOTHING TO INSTALL HERE. The base image (codercom/enterprise-base:ubuntu)
+# ALREADY ships the Docker CLI + Compose plugin (+ buildx) pre-installed —
+# verified: `docker --version` → 29.5.3, `docker compose version` → v5.1.4,
+# packages docker-ce-cli / docker-compose-plugin / docker-buildx-plugin present.
+#
+# DO NOT re-add an `apt-get install docker-ce-cli docker-compose-plugin` block:
+# the base image already configures Docker's apt repo at
+# /etc/apt/sources.list.d/docker.list with a dearmored keyring under
+# /usr/share/keyrings. A hand-rolled block that writes an ASCII-armored key to
+# /etc/apt/keyrings/docker.gpg and overwrites that docker.list breaks apt with
+# `NO_PUBKEY 7EA0A9C3F273FCD8`, so the install fails (exit 100) — which is
+# exactly the build failure this comment replaces.
+#
+# This template uses docker-OUTSIDE-of-docker (DooD): the pre-installed CLI +
+# Compose plugin drive the HOST Docker daemon via the socket bind-mounted by
+# main.tf (docker_container.workspace mounts /var/run/docker.sock and adds
+# group_add = [var.docker_group_id] so the coder user can reach it). A nested
+# engine is NOT used and would NOT work — see the PostgreSQL block above for why
+# (no NET_ADMIN, no namespace creation inside this workspace container). Because
+# the CLI talks to the host daemon:
 #   - `docker ps` lists HOST containers, not workspace-local ones.
 #   - `docker compose up` starts stacks as SIBLING containers alongside the
 #     workspace, not children of it.
@@ -192,13 +207,5 @@ RUN set -eux; \
 #       workspace can start privileged containers, read host files via volume
 #       mounts, etc.). This is acceptable for a single-operator self-hosted setup
 #       but is NOT appropriate for a shared or multi-tenant team deployment.
-RUN mkdir -p -m 755 /etc/apt/keyrings \
- && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.gpg \
- && chmod go+r /etc/apt/keyrings/docker.gpg \
- && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list \
- && apt-get update \
- && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
 
 USER coder
