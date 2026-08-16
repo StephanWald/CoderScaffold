@@ -147,33 +147,6 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-# ── PostgreSQL + pgvector ─────────────────────────────────────────────────────
-# Docker-in-Docker is structurally unusable inside this workspace container
-# (live-probed: `iptables -t nat -N DOCKER` -> Permission denied, `unshare:
-# operation not permitted` — no NET_ADMIN, no namespace creation), so Postgres
-# cannot run as a nested container. It is baked here and started by the agent
-# (see main.tf startup_script) with PGDATA on the persistent /home/coder volume
-# — NOT the Debian-managed cluster below, which lives in the container layer
-# and would be wiped on every workspace restart. The default cluster is dropped
-# immediately after install so nobody mistakes it for the live database.
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends postgresql postgresql-contrib; \
-    PG_MAJOR="$(ls /usr/lib/postgresql | sort -V | tail -1)"; \
-    apt-get install -y --no-install-recommends "postgresql-$PG_MAJOR-pgvector"; \
-    pg_dropcluster --stop "$PG_MAJOR" main 2>/dev/null || true; \
-    install -d -o coder -g coder -m 0775 /var/run/postgresql; \
-    printf '%s\n' \
-      'export PGDATA=/home/coder/.pgdata' \
-      'export DATABASE_URL=postgresql://coder@localhost:5432/coder' \
-      > /etc/profile.d/20-postgres.sh; \
-    printf 'export PATH="/usr/lib/postgresql/%s/bin:$PATH"\n' "$PG_MAJOR" \
-      >> /etc/profile.d/20-postgres.sh; \
-    chmod 0644 /etc/profile.d/20-postgres.sh; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*; \
-    "/usr/lib/postgresql/$PG_MAJOR/bin/initdb" --version
-
 # ── Docker CLI + Compose plugin (docker-outside-of-docker) ───────────────────
 # NOTHING TO INSTALL HERE. The base image (codercom/enterprise-base:ubuntu)
 # ALREADY ships the Docker CLI + Compose plugin (+ buildx) pre-installed —
@@ -192,9 +165,9 @@ RUN set -eux; \
 # Compose plugin drive the HOST Docker daemon via the socket bind-mounted by
 # main.tf (docker_container.workspace mounts /var/run/docker.sock and adds
 # group_add = [var.docker_group_id] so the coder user can reach it). A nested
-# engine is NOT used and would NOT work — see the PostgreSQL block above for why
-# (no NET_ADMIN, no namespace creation inside this workspace container). Because
-# the CLI talks to the host daemon:
+# engine is NOT used and would NOT work here — this workspace container has no
+# NET_ADMIN and cannot create namespaces, so a nested Docker daemon cannot run.
+# Because the CLI talks to the host daemon:
 #   - `docker ps` lists HOST containers, not workspace-local ones.
 #   - `docker compose up` starts stacks as SIBLING containers alongside the
 #     workspace, not children of it.
