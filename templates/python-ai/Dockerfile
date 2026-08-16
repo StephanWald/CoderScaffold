@@ -174,4 +174,31 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*; \
     "/usr/lib/postgresql/$PG_MAJOR/bin/initdb" --version
 
+# ── Docker CLI + Compose plugin (docker-outside-of-docker) ───────────────────
+# This is docker-OUTSIDE-of-docker (DooD): the Docker CLI and Compose plugin
+# installed here talk to the HOST Docker daemon via the socket mounted by main.tf
+# (/var/run/docker.sock bind-mount). A nested engine is NOT installed and would
+# NOT work — see the PostgreSQL block above for why (no NET_ADMIN, no namespace
+# creation inside this workspace container). The socket mount means:
+#   - `docker ps` lists HOST containers, not workspace-local ones.
+#   - `docker compose up` starts stacks as SIBLING containers alongside the
+#     workspace, not children of it.
+#
+# Operator gotchas:
+#   (a) Bind-mount paths in compose files (volumes: section) resolve against the
+#       HOST filesystem, not the workspace filesystem. A path that looks correct
+#       inside the workspace may silently reference an unexpected host path.
+#   (b) Socket access grants EFFECTIVE ROOT ON THE HOST (any process in the
+#       workspace can start privileged containers, read host files via volume
+#       mounts, etc.). This is acceptable for a single-operator self-hosted setup
+#       but is NOT appropriate for a shared or multi-tenant team deployment.
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+ && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.gpg \
+ && chmod go+r /etc/apt/keyrings/docker.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
 USER coder
