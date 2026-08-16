@@ -20,12 +20,16 @@
 # Requires:
 #   - Coder server running (compose.yaml) with /var/run/docker.sock mounted
 #   - CODER_ACCESS_URL set to a reachable address (see README ## Workspace Template)
+#   - Host /var/run/docker.sock present and accessible (the Coder server compose
+#     already ensures this); GID must match docker_group_id variable (default 999)
 #
 # Resources:
 #   coder_agent         — workspace agent (always present; no count)
 #   docker_volume       — persistent /home/coder (survives stop/start)
 #   docker_image        — workspace image (CPython/tools; cached per python_version)
-#   docker_container    — ephemeral workspace container (count = start_count)
+#   docker_container    — ephemeral workspace container (count = start_count);
+#                         mounts host Docker socket for docker-outside-of-docker
+#                         (`docker` / `docker compose` available in workspace)
 #   module code-server        — browser VS Code
 #   module vscode-desktop     — local VS Code Desktop via SSH  [LIVE-VERIFY]
 #   module jetbrains-gateway  — PyCharm Professional (Gateway)
@@ -51,6 +55,20 @@ terraform {
 variable "docker_socket" {
   default     = ""
   description = "(Optional) Docker socket URI. Defaults to /var/run/docker.sock."
+  type        = string
+}
+
+# Host Docker socket GID for docker-outside-of-docker access.
+# The coder user (the image's final USER) needs to be in the host docker group
+# to read/write the socket mounted at /var/run/docker.sock. Discover the correct
+# GID on the host with:
+#   stat -c '%g' /var/run/docker.sock
+# 999 is the standard GID on Debian/Ubuntu Docker Engine installations.
+# Docker Desktop (Mac/Windows) uses a different GID — override this variable
+# if socket access inside the workspace returns "permission denied".
+variable "docker_group_id" {
+  default     = "999"
+  description = "GID of the host's docker group (used for /var/run/docker.sock access). Discover with: stat -c '%g' /var/run/docker.sock on the host. Override if your host docker socket GID differs from 999 (the Debian/Ubuntu default)."
   type        = string
 }
 
@@ -548,6 +566,24 @@ resource "docker_container" "workspace" {
     volume_name    = local.claude_volume_name
     read_only      = false
   }
+
+  # Host Docker socket — docker-outside-of-docker. The Docker CLI + Compose
+  # plugin baked into the image (Dockerfile) drive the HOST daemon via this
+  # socket. Compose stacks run as SIBLING containers alongside the workspace.
+  # host_path is a HOST filesystem path (/var/run/docker.sock must exist on
+  # the host — the Coder server's own compose.yaml already mounts it there).
+  volumes {
+    host_path      = "/var/run/docker.sock"
+    container_path = "/var/run/docker.sock"
+    read_only      = false
+  }
+
+  # Join the host docker group so the coder user can access the mounted socket.
+  # Discover the correct GID with: stat -c '%g' /var/run/docker.sock on the host.
+  # A mismatch between this GID and the host socket's actual GID causes
+  # "permission denied" when running docker commands inside the workspace.
+  # Override the docker_group_id variable if your host differs from the default.
+  group_add = [var.docker_group_id]
 
   labels {
     label = "coder.owner"
