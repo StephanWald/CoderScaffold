@@ -652,6 +652,7 @@ module "code-server" {
   agent_id     = coder_agent.main.id
   folder       = local.project_folder
   display_name = "VS Code"
+  extensions   = ["Anthropic.claude-code"]
   order        = 1
 }
 

@@ -567,7 +567,7 @@ module "code-server" {
   agent_id     = coder_agent.main.id
   folder       = local.project_folder
   display_name = "VS Code"
-  extensions   = ["Dart-Code.dart-code", "Dart-Code.flutter"]
+  extensions   = ["Dart-Code.dart-code", "Dart-Code.flutter", "Anthropic.claude-code"]
   order        = 1
 }
 

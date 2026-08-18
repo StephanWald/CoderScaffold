@@ -503,6 +503,7 @@ module "code-server" {
   agent_id     = coder_agent.main.id
   folder       = "/home/coder"
   display_name = "VS Code"
+  extensions   = ["Anthropic.claude-code"]
   order        = 1
 }
 
