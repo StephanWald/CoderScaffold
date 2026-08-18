@@ -4,9 +4,9 @@ milestone: v1.1
 milestone_name: Portable Claude Code Setup
 status: Awaiting next milestone
 stopped_at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
-last_updated: "2026-08-16T07:01:28.521Z"
-last_activity: 2026-08-16
-last_activity_desc: "Completed quick task 260816-7c0: Docker access in python-ai template via socket-mount (docker-outside-of-docker) — docker-ce-cli + compose plugin in image, host socket bind-mount + group_add"
+last_updated: "2026-08-18T15:03:46.579Z"
+last_activity: 2026-08-18
+last_activity_desc: "Completed quick task 260818-kx5: new templates/flutter/ Flutter + Dart workspace template (Flutter SDK bundles Dart, build-time stable/beta channel), mirroring the python-ai/java-fullstack skeleton (Claude Code + MCP + GSD + MemPalace + DooD + git); static fmt/validate/build --check PASS, live gate deferred"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-16 — Completed quick task 260816-a62: removed baked-in PostgreSQL + pgvector from python-ai template (redundant now that docker-outside-of-docker is configured — run pgvector as a container instead)
-Previous activity: 2026-08-16 — Completed quick task 260816-7c0: Docker access in python-ai template via socket-mount (docker-outside-of-docker) — docker-ce-cli + compose plugin in image, host socket bind-mount + group_add
+Last activity: 2026-08-18 — Completed quick task 260818-kx5: new templates/flutter/ Flutter + Dart workspace template (Flutter SDK bundles Dart, build-time stable/beta channel; code-server + VS Code Desktop + IntelliJ IDEA), mirroring the python-ai/java-fullstack skeleton (Claude Code + MCP + GSD + MemPalace + docker-outside-of-docker + git)
+Previous activity: 2026-08-16 — Completed quick task 260816-a62: removed baked-in PostgreSQL + pgvector from python-ai template (redundant now that docker-outside-of-docker is configured — run pgvector as a container instead)
 
 ## Performance Metrics
 
@@ -147,6 +147,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260816-a62 | python-ai: REMOVED baked-in PostgreSQL + pgvector (Dockerfile apt block, main.tf startup_script init/pg_ctl/createdb/CREATE EXTENSION block + PGDATA/DATABASE_URL env, README section/bullet/checklist). Redundant now that docker-outside-of-docker is configured — run pgvector as a container instead. Docker feature (socket mount + group_add + DooD comment) untouched; Dockerfile back-reference made self-contained. Zero-match grep + `terraform fmt -check` + `terraform validate` PASS. LIVE-VERIFY DEFERRED (push + workspace start: image builds, agent env has no PGDATA/DATABASE_URL, no dangling startup_script errors) — in SUMMARY | 2026-08-16 | 97be2e6 | [260816-a62-remove-baked-in-postgresql-pgvector-from](./quick/260816-a62-remove-baked-in-postgresql-pgvector-from/) |
 | 31 | Coder login session duration set to 7 days: CODER_SESSION_DURATION overridable env (default 168h) added to the coder service in compose.yaml (Coder default is 24h; refreshes on activity unless CODER_DISABLE_SESSION_EXPIRY_REFRESH=true). .env.example doc entry NOT written — blocked by env-file permission guard (functional default lives in compose, so no .env needed). | 2026-08-16 | cbfb2ad | — |
 | 32 | FIX python-ai image build failure (docker_image.main exit 100): removed the Docker CLI apt block from templates/python-ai/Dockerfile — it saved Docker's armored GPG key as docker.gpg without dearmoring and clobbered the base image's working docker.list (NO_PUBKEY 7EA0A9C3F273FCD8 -> docker-ce-cli not found -> exit 100). Block was also redundant: codercom/enterprise-base:ubuntu already ships docker-ce-cli + docker-compose-plugin + buildx (docker 29.5.3, compose v5.1.4). Replaced with comment-only DooD note; main.tf socket-mount + group_add unchanged. terraform fmt/validate PASS. Live prod build/push still the final gate. | 2026-08-16 | 6978c76 | — |
+| 260818-kx5 | New `templates/flutter/` Flutter + Dart workspace template, mirroring the python-ai/java-fullstack skeleton (Claude Code + per-owner shared Claude volume, webforJ MCP, MemPalace MCP + init, GSD, docker-outside-of-docker socket mount + group_add, git-over-SSH forge known_hosts, gh CLI, optional git_repo clone, persistent home volume, bypassPermissions, 127.0.0.1->host.docker.internal rewrite). Toolchain: Flutter SDK (bundles Dart) `git clone -b ${FLUTTER_CHANNEL}` -> /opt/flutter on a build-time `flutter_channel` param (stable default, beta), `flutter precache` baked in, flutter/dart symlinked to /usr/local/bin, safe.directory + chown for git dubious-ownership; Node LTS kept, JupyterLab dropped. IDEs: code-server (VS Code browser, Dart+Flutter extensions) + vscode-desktop + jetbrains-gateway (IntelliJ IDEA Ultimate IU). `terraform fmt -check` + `terraform validate` (modules resolved) + `docker build --check` PASS. LIVE-VERIFY DEFERRED (real docker build w/ precache + flutter doctor/build web + `coder templates push flutter` + IDE buttons + Open VSX ext ids + /icon/flutter.svg) — in README checklist + SUMMARY | 2026-08-18 | a73265e | [260818-kx5-add-coder-workspace-template-flutter-for](./quick/260818-kx5-add-coder-workspace-template-flutter-for/) |
 
 ## Deferred Items
 
