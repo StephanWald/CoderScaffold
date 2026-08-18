@@ -28,7 +28,7 @@
 #   docker_volume    — persistent /home/coder (survives stop/start)
 #   docker_image     — workspace image (built from operator host context)
 #   docker_container — ephemeral workspace container (count = start_count)
-#   module code-server        — browser VS Code
+#   module code-server        — browser VS Code (Claude Code extension pre-installed)
 #   module jetbrains-gateway  — IntelliJ IDEA (Gateway)
 #   module claude-code        — Claude Code CLI + auth wiring
 #   coder_app bbjservices     — BBjServices HTTP interface on port 8888
@@ -644,7 +644,7 @@ resource "docker_container" "workspace" {
 # count = start_count mirrors docker_container. folder points at the cloned repo
 # when git_repo was supplied (local.project_folder), else /home/coder.
 
-# Browser VS Code via code-server
+# Browser VS Code via code-server — pre-installs Anthropic.claude-code extension via extensions argument
 module "code-server" {
   count        = data.coder_workspace.me.start_count
   source       = "registry.coder.com/coder/code-server/coder"

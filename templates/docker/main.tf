@@ -10,7 +10,7 @@
 #   docker_volume    — persistent /home/coder (survives stop/start)
 #   docker_image     — workspace base image (cached locally)
 #   docker_container — ephemeral workspace container (count = start_count)
-#   module code-server        — browser VS Code (TPL-02)
+#   module code-server        — browser VS Code (TPL-02, Claude Code extension pre-installed)
 #   module jetbrains-gateway  — IntelliJ Gateway (TPL-03)
 #   docker_volume claude_config_volume — per-owner Claude config (survives workspace delete)
 #   module claude-code                 — Claude Code CLI + auth wiring (CLAUDE-01)
@@ -495,7 +495,7 @@ resource "docker_container" "workspace" {
 # Both modules use count = start_count to mirror docker_container.
 # Only register the coder_app when the workspace is actually running. (Pitfall 7)
 
-# Browser VS Code via code-server (TPL-02 / D-05)
+# Browser VS Code via code-server (TPL-02 / D-05) — pre-installs Anthropic.claude-code extension via extensions argument
 module "code-server" {
   count        = data.coder_workspace.me.start_count
   source       = "registry.coder.com/coder/code-server/coder"

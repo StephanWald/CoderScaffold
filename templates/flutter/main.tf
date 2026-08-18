@@ -29,7 +29,7 @@
 #   docker_container    — ephemeral workspace container (count = start_count);
 #                         mounts host Docker socket for docker-outside-of-docker
 #                         (`docker` / `docker compose` available in workspace)
-#   module code-server        — browser VS Code (Dart + Flutter extensions)
+#   module code-server        — browser VS Code (Dart + Flutter + Claude Code extensions)
 #   module vscode-desktop     — local VS Code Desktop via SSH  [LIVE-VERIFY]
 #   module jetbrains-gateway  — IntelliJ IDEA Ultimate (Gateway)
 #   module claude-code        — Claude Code CLI + auth wiring
@@ -554,12 +554,12 @@ resource "docker_container" "workspace" {
 # count = start_count mirrors docker_container. folder points at the cloned repo
 # when git_repo was supplied (local.project_folder), else /home/coder.
 
-# Browser VS Code via code-server. Pre-installs the Dart + Flutter extensions from
+# Browser VS Code via code-server. Pre-installs Dart + Flutter + Claude Code extensions from
 # Open VSX (the marketplace code-server uses).
 # [LIVE-VERIFY] Confirm the Open VSX extension ids resolve at push time:
-# "Dart-Code.dart-code" and "Dart-Code.flutter". If either fails to install, the
-# module logs a warning and continues — remove the offending id or install it
-# manually from the code-server UI.
+# "Dart-Code.dart-code", "Dart-Code.flutter", and "Anthropic.claude-code". If any fails
+# to install, the module logs a warning and continues — remove the offending id or install
+# it manually from the code-server UI.
 module "code-server" {
   count        = data.coder_workspace.me.start_count
   source       = "registry.coder.com/coder/code-server/coder"
