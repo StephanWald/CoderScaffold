@@ -215,4 +215,35 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
+# ── Docker CLI + Compose plugin (docker-outside-of-docker) ───────────────────
+# NOTHING TO INSTALL HERE. The base image (codercom/enterprise-base:ubuntu)
+# ALREADY ships the Docker CLI + Compose plugin (+ buildx) pre-installed.
+#
+# DO NOT re-add an `apt-get install docker-ce-cli docker-compose-plugin` block:
+# the base image already configures Docker's apt repo at
+# /etc/apt/sources.list.d/docker.list with a dearmored keyring under
+# /usr/share/keyrings. A hand-rolled block that writes an ASCII-armored key to
+# /etc/apt/keyrings/docker.gpg and overwrites that docker.list breaks apt with
+# `NO_PUBKEY 7EA0A9C3F273FCD8`, so the install fails (exit 100).
+#
+# This template uses docker-OUTSIDE-of-docker (DooD): the pre-installed CLI +
+# Compose plugin drive the HOST Docker daemon via the socket bind-mounted by
+# main.tf (docker_container.workspace mounts /var/run/docker.sock and adds
+# group_add = [var.docker_group_id] so the coder user can reach it). A nested
+# engine is NOT used and would NOT work here — this workspace container has no
+# NET_ADMIN and cannot create namespaces, so a nested Docker daemon cannot run.
+# Because the CLI talks to the host daemon:
+#   - `docker ps` lists HOST containers, not workspace-local ones.
+#   - `docker compose up` starts stacks as SIBLING containers alongside the
+#     workspace, not children of it.
+#
+# Operator gotchas:
+#   (a) Bind-mount paths in compose files (volumes: section) resolve against the
+#       HOST filesystem, not the workspace filesystem. A path that looks correct
+#       inside the workspace may silently reference an unexpected host path.
+#   (b) Socket access grants EFFECTIVE ROOT ON THE HOST (any process in the
+#       workspace can start privileged containers, read host files via volume
+#       mounts, etc.). This is acceptable for a single-operator self-hosted setup
+#       but is NOT appropriate for a shared or multi-tenant team deployment.
+
 USER coder
