@@ -37,6 +37,20 @@ variable "docker_socket" {
   type        = string
 }
 
+# Host Docker socket GID for docker-outside-of-docker access.
+# The coder user (the image's final USER) needs to be in the host docker group
+# to read/write the socket mounted at /var/run/docker.sock. Discover the correct
+# GID on the host with:
+#   stat -c '%g' /var/run/docker.sock
+# 999 is the standard GID on Debian/Ubuntu Docker Engine installations.
+# Docker Desktop (Mac/Windows) uses a different GID — override this variable
+# if socket access inside the workspace returns "permission denied".
+variable "docker_group_id" {
+  default     = "999"
+  description = "GID of the host's docker group (used for /var/run/docker.sock access). Discover with: stat -c '%g' /var/run/docker.sock on the host. Override if your host docker socket GID differs from 999 (the Debian/Ubuntu default)."
+  type        = string
+}
+
 # Workspace BASE image — pinned default, overridable (D-02). Passed as the
 # BASE_IMAGE build arg to templates/docker/Dockerfile, which layers Node.js on
 # top. Override to build from a different base.
@@ -421,15 +435,14 @@ resource "docker_image" "main" {
 # Docker socket GID on your host may differ from the default. Discover it with:
 #   stat -c '%g' /var/run/docker.sock
 #
-# Note: This template does NOT mount /var/run/docker.sock into workspace
-# containers — only the Coder server container has socket access (T-03-01).
-# The group_add below is for the workspace container's supplemental GID
-# (needed only if the workspace image runs processes that require Docker group
-# membership for other reasons). For the standard case, leave it commented.
-#
-# Uncomment and set the correct GID if you need Docker group access inside
-# the workspace container:
-#   group_add = ["998"]  # Replace 998 with output of: stat -c '%g' /var/run/docker.sock
+# This template DOES mount /var/run/docker.sock into the workspace container
+# for docker-outside-of-docker (DooD): see the socket `volumes {}` block and
+# `group_add = [var.docker_group_id]` inside docker_container.workspace below.
+# The coder user drives the HOST daemon; compose stacks run as SIBLING
+# containers. Override the docker_group_id variable if the host socket GID
+# differs from the default 999 (Debian/Ubuntu). Socket access grants effective
+# root on the host — acceptable for a single-operator self-hosted deployment,
+# not for shared/multi-tenant setups.
 
 resource "docker_container" "workspace" {
   count    = data.coder_workspace.me.start_count
@@ -471,6 +484,24 @@ resource "docker_container" "workspace" {
     volume_name    = local.claude_volume_name
     read_only      = false
   }
+
+  # Host Docker socket — docker-outside-of-docker. The Docker CLI + Compose
+  # plugin baked into the image (Dockerfile) drive the HOST daemon via this
+  # socket. Compose stacks run as SIBLING containers alongside the workspace.
+  # host_path is a HOST filesystem path (/var/run/docker.sock must exist on
+  # the host — the Coder server's own compose.yaml already mounts it there).
+  volumes {
+    host_path      = "/var/run/docker.sock"
+    container_path = "/var/run/docker.sock"
+    read_only      = false
+  }
+
+  # Join the host docker group so the coder user can access the mounted socket.
+  # Discover the correct GID with: stat -c '%g' /var/run/docker.sock on the host.
+  # A mismatch between this GID and the host socket's actual GID causes
+  # "permission denied" when running docker commands inside the workspace.
+  # Override the docker_group_id variable if your host differs from the default.
+  group_add = [var.docker_group_id]
 
   labels {
     label = "coder.owner"
