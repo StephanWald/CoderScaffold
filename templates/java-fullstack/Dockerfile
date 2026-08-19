@@ -125,6 +125,18 @@ RUN apt-get update \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
+# ── zlib (libz.so dev symlink for GraalVM native-image) ─────────────────────
+# The base image ships the runtime libz.so.1 but NOT the dev symlink
+# /usr/lib/x86_64-linux-gnu/libz.so. GraalVM native-image's link step passes
+# -lz to the linker, which resolves that dev symlink; without it the native
+# build fails at link time. zlib1g-dev provides the missing symlink
+# SYSTEM-WIDE under /usr — outside the volume-shadowed /home/coder mount —
+# so it survives every workspace start with no per-boot cost.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends zlib1g-dev \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
 # ── GitHub CLI (gh) ──────────────────────────────────────────────────────────
 # Official apt repo (cli.github.com), arch-aware. Auth is per-user at runtime:
 # run `gh auth login` once per workspace — the token persists in ~/.config/gh
