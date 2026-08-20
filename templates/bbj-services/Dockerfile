@@ -246,4 +246,12 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 #       mounts, etc.). This is acceptable for a single-operator self-hosted setup
 #       but is NOT appropriate for a shared or multi-tenant team deployment.
 
+# ── Playwright chromium + OS deps ────────────────────────────────────────────
+# Bakes the chromium browser AND its shared libs (libnss3, libatk, ...) so the
+# Playwright MCP server (registered in the agent startup_script) can drive a
+# headless browser for self-serve UI testing. Done at build time so workspace
+# boot has zero per-start cost. --with-deps pulls the apt libraries.
+# Runs in the final stage (inherits Node.js/npx from the base stage via FROM base AS final).
+RUN npx -y playwright@latest install --with-deps chromium
+
 USER coder

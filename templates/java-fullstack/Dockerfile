@@ -37,6 +37,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
+# ── Playwright chromium + OS deps ────────────────────────────────────────────
+# Bakes the chromium browser AND its shared libs (libnss3, libatk, ...) so the
+# Playwright MCP server (registered in the agent startup_script) can drive a
+# headless browser for self-serve UI testing. Done at build time so workspace
+# boot has zero per-start cost. --with-deps pulls the apt libraries.
+RUN npx -y playwright@latest install --with-deps chromium
+
 # ── JDK (build-time selection) ───────────────────────────────────────────────
 # Installs the selected JDK to /opt/java/default and registers it as the system
 # java/javac via update-alternatives. Architecture is detected at build time so

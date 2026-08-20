@@ -28,6 +28,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
+# ── Playwright chromium + OS deps ────────────────────────────────────────────
+# Bakes the chromium browser AND its shared libs (libnss3, libatk, ...) so the
+# Playwright MCP server (registered in the agent startup_script) can drive a
+# headless browser for self-serve UI testing. Done at build time so workspace
+# boot has zero per-start cost. --with-deps pulls the apt libraries.
+RUN npx -y playwright@latest install --with-deps chromium
+
 # ── uv (Astral) — system-wide Python toolchain manager ───────────────────────
 # Installs the standalone uv + uvx binaries to /usr/local/bin so all users get
 # them on PATH. UV_PYTHON_INSTALL_DIR, UV_TOOL_DIR, UV_TOOL_BIN_DIR are set to
