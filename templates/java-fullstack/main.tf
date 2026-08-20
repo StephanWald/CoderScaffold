@@ -293,6 +293,28 @@ resource "coder_agent" "main" {
       echo "WARN: node not found; skipping webforJ MCP registration" >&2
     fi
 
+    # ── Playwright MCP server — preconfigure in user-scope Claude config ───────
+    # Registers the Playwright MCP server (npx @playwright/mcp) under the
+    # top-level "mcpServers" key of the shared ~/.claude.json, so Claude Code can
+    # drive the chromium browser baked into the image for self-serve UI testing.
+    # Merged with node (guaranteed present) so existing config/auth are preserved.
+    # Idempotent: re-asserts on every start. Non-fatal under set -e (WR-03
+    # warn-and-continue): a missing node or a write failure must NEVER abort the
+    # startup_script — log and continue.
+    if command -v node >/dev/null 2>&1; then
+      CLAUDE_JSON="$CLAUDE_SHARED/dot-claude.json" node -e '
+        const fs = require("fs");
+        const f = process.env.CLAUDE_JSON;
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(f, "utf8") || "{}") || {}; } catch (e) {}
+        cfg.mcpServers = cfg.mcpServers || {};
+        cfg.mcpServers.playwright = { command: "npx", args: ["-y", "@playwright/mcp@latest"] };
+        fs.writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n");
+      ' || echo "WARN: could not register Playwright MCP server; continuing" >&2
+    else
+      echo "WARN: node not found; skipping Playwright MCP registration" >&2
+    fi
+
     # ── MemPalace MCP server — preconfigure in user-scope Claude config ────────
     # Registers MemPalace's stdio MCP server (the system-wide `mempalace` CLI baked
     # into the image, run as `mempalace mcp serve`) under the top-level "mcpServers"
