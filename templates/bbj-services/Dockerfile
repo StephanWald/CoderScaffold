@@ -252,6 +252,20 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # headless browser for self-serve UI testing. Done at build time so workspace
 # boot has zero per-start cost. --with-deps pulls the apt libraries.
 # Runs in the final stage (inherits Node.js/npx from the base stage via FROM base AS final).
-RUN npx -y playwright@latest install --with-deps chromium
+#
+# PLAYWRIGHT_BROWSERS_PATH pins the browser to a world-readable SYSTEM path
+# instead of the installing user's ~/.cache. This layer runs as root, but the
+# workspace runs as `coder` with a volume-mounted $HOME — a browser left under
+# /root/.cache would be invisible to the runtime user. ENV persists into the
+# running container, so the `coder`-user `npx @playwright/mcp` inherits the same
+# path and finds the baked browser; chmod o+rX keeps it readable/executable for
+# the non-root runtime user.
+# NOTE: the baked chromium revision is the one shipped with `playwright@latest`
+# at BUILD time; if a much newer @playwright/mcp is fetched at runtime it may
+# expect a different revision and try to re-download into this path. Rebuild the
+# image to refresh, or pin both to matching versions if drift becomes an issue.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx -y playwright@latest install --with-deps chromium \
+ && chmod -R o+rX /ms-playwright
 
 USER coder
