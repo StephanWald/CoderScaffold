@@ -5,8 +5,8 @@ milestone_name: Portable Claude Code Setup
 status: Awaiting next milestone
 stopped_at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
 last_updated: "2026-08-18T15:03:46.579Z"
-last_activity: 2026-08-19
-last_activity_desc: "Completed quick task 260819-dq6: added dedicated zlib1g-dev apt block to templates/java-fullstack/Dockerfile (box-drawing header, GraalVM native-image -lz link step prose, chained apt idiom); installs /usr/lib/x86_64-linux-gnu/libz.so dev symlink system-wide under /usr; placed between MemPalace and GitHub CLI blocks; static grep verification PASS"
+last_activity: 2026-08-21
+last_activity_desc: "Completed quick task 260821-c9d: appended --browser chromium --headless to @playwright/mcp args in python-ai/java-fullstack/bbj-services startup_scripts; selects baked /ms-playwright chromium instead of missing Google Chrome channel; static grep PASS (new 5-element form in all 3; old 2-element form absent; 3 files changed)"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -28,7 +28,8 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-20 — Completed quick task 260820-r9b: added Playwright MCP browser-testing to java-fullstack/python-ai/bbj-services templates (chromium --with-deps layer + MCP server registration); fixed browser-path defect via PLAYWRIGHT_BROWSERS_PATH=/ms-playwright; live-verified python-ai build + coder-user headless chromium launch; live workspace boot / MCP handshake still unverified
+Last activity: 2026-08-21 — Completed quick task 260821-c9d: appended --browser chromium --headless to @playwright/mcp args in python-ai/java-fullstack/bbj-services startup_scripts; selects baked /ms-playwright chromium instead of missing Google Chrome channel; static grep PASS (new 5-element form in all 3; old 2-element form absent; 3 files changed)
+Previous activity: 2026-08-20 — Completed quick task 260820-r9b: added Playwright MCP browser-testing to java-fullstack/python-ai/bbj-services templates (chromium --with-deps layer + MCP server registration); fixed browser-path defect via PLAYWRIGHT_BROWSERS_PATH=/ms-playwright; live-verified python-ai build + coder-user headless chromium launch; live workspace boot / MCP handshake still unverified
 Previous activity: 2026-08-16 — Completed quick task 260816-a62: removed baked-in PostgreSQL + pgvector from python-ai template (redundant now that docker-outside-of-docker is configured — run pgvector as a container instead)
 
 ## Performance Metrics
@@ -153,6 +154,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260819-dq6 | Add `zlib1g-dev` to `templates/java-fullstack/Dockerfile` so GraalVM `native-image` compiles resolve the `libz.so` dev symlink out of the box. Base image ships runtime `libz.so.1` but not the dev symlink `/usr/lib/x86_64-linux-gnu/libz.so` that the linker's `-lz` (native-image link step) resolves; `zlib1g-dev` provides it. Dedicated, self-documenting apt block (box-drawing header + prose comment) inserted after the MemPalace CLI block, before the GitHub CLI block — installs to `/usr` (outside the volume-shadowed `/home/coder` mount), matching the file's one-purpose-per-block convention. Static grep verification PASS (package + `native-image` comment + install idiom); image build is a live-deploy concern handled separately | 2026-08-19 | 7ea9782 | [260819-dq6-add-zlib1g-dev-to-java-fullstack-templat](./quick/260819-dq6-add-zlib1g-dev-to-java-fullstack-templat/) |
 | 260819-dq6 | java-fullstack: add dedicated `zlib1g-dev` apt block (box-drawing header + prose comment + chained apt-get update/install/clean/rm idiom) between the MemPalace block and the GitHub CLI block — installs the `/usr/lib/x86_64-linux-gnu/libz.so` dev symlink system-wide under `/usr` so GraalVM `native-image`'s `-lz` link step resolves; static grep verification PASS | 2026-08-19 | 7ea9782 | [260819-dq6-add-zlib1g-dev-to-java-fullstack-templat](./quick/260819-dq6-add-zlib1g-dev-to-java-fullstack-templat/) |
 | 260820-r9b | Playwright MCP browser-testing in 3 templates (java-fullstack, python-ai, bbj-services): bake chromium `--with-deps` layer into each Dockerfile + register `playwright` MCP server after the webforJ block in each startup_script. Orchestrator fix: `ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` so the root-installed browser is reachable by the `coder` runtime user (was landing in `/root/.cache`). Live-verified: python-ai `docker build` + `coder`-user headless chromium launch (v151) PASS; heredoc `terraform fmt` PASS. NOT verified: live workspace boot / MCP handshake, bbj-services build | 2026-08-20 | 46e026f | [260820-r9b-add-playwright-mcp-browser-testing-to-ja](./quick/260820-r9b-add-playwright-mcp-browser-testing-to-ja/) |
+| 260821-c9d | Fix Playwright MCP server registration in all 3 templates: appended `--browser chromium --headless` to the `@playwright/mcp@latest` args array in python-ai/java-fullstack/bbj-services startup_scripts — selects the baked `/ms-playwright` chromium over the missing Google Chrome channel, and runs headless (no `$DISPLAY`). Static grep verification PASS (new 5-element args form in all 3; old 2-element form absent; git diff: 3 files, 3 insertions, 3 deletions) | 2026-08-21 | df8482e | [260821-c9d-fix-playwright-mcp-server-registration-i](./quick/260821-c9d-fix-playwright-mcp-server-registration-i/) |
 
 ## Deferred Items
 
