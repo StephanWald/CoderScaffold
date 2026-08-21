@@ -194,6 +194,98 @@ If you need `/opt/bbx` to persist configuration across rebuilds, a Docker
 volume for `/opt/bbx` can be added to the `docker_container` resource in
 `main.tf` (operator's choice — not included by default to keep the template simple).
 
+### FLAG-04: Optional case-insensitive project filesystem
+
+#### Parameters
+
+| Parameter | Type | Default | Mutable | Description |
+|-----------|------|---------|---------|-------------|
+| `case_insensitive_project` | bool | `false` | no | Enable the ext4 casefold loop-mount. Create-time only — a different setting requires a new workspace. |
+| `case_insensitive_size_gb` | number | `20` | no | Size ceiling of the sparse loopback image in GB. Only used when the bool is `true`. |
+
+Both parameters are **mutable = false** (create-time only). They appear in the
+workspace creation dialog and cannot be changed on a running or stopped workspace.
+
+#### Rationale
+
+The CarIT codebase (and similar Windows-origin projects) assumes **case-insensitive
+path resolution**: `Foo.bbj` and `foo.bbj` are treated as the same file. On a normal
+Linux ext4 mount these are two distinct inodes, which causes subtle breakage — wrong
+source files compiled, duplicate symbols, test failures. The standard workaround
+(FUSE `ciopfs`, host bind-mount from a case-insensitive macOS HFS+ volume) requires
+host setup outside the workspace; the kernel-native ext4 casefold approach baked into
+this template requires no host changes beyond SYS_ADMIN capability.
+
+#### Mechanism
+
+When `case_insensitive_project=true`, the agent `startup_script` performs the
+following **before** the `git clone` step (so the clone lands inside the mount):
+
+1. Creates `$HOME/.casefold/project.img` on the **persistent home volume** — a
+   sparse file of the configured size (`truncate -s`; no upfront disk allocation).
+2. Formats it with `mkfs.ext4 -O casefold -E encoding=utf8` — requires
+   `e2fsprogs >= 1.43` (baked into the image via the Dockerfile apt block).
+3. Loop-mounts it at the project folder with `sudo mount -o loop`.
+4. Sets the `+F` casefold flag on the mount root with `chattr +F` (also from
+   `e2fsprogs`), enabling case-insensitive filename lookups for all files
+   created inside the mount.
+
+Every step is **WR-03 non-fatal** (`|| echo "WARN: ...; continuing" >&2`) — a
+mount failure logs a warning and lets the workspace continue starting (without
+case-insensitivity, but without a hard crash).
+
+#### SYS_ADMIN capability
+
+Enabling `case_insensitive_project=true` adds `SYS_ADMIN` to the workspace
+container's Linux capabilities (via the `dynamic "capabilities"` block in
+`main.tf`). This is required for `sudo mount -o loop` to attach a loopback
+device. It is present **only when the parameter is true** — workspaces that
+do not opt in receive no additional capabilities.
+
+**This is not a new privilege escalation** for this deployment: the host
+`/var/run/docker.sock` is already mounted inside the workspace container
+(see `main.tf`), which gives the `coder` user effective host-root access on a
+single-operator setup. SYS_ADMIN is a narrower grant than the socket implies.
+
+**Fallback:** if `SYS_ADMIN` alone is insufficient to attach a loopback device
+on your host kernel or Docker provider, you can set `privileged = true` on the
+`docker_container.workspace` resource in `main.tf`. This is deliberately **not**
+the default — SYS_ADMIN alone is preferred as it is the minimum necessary grant.
+Only fall back to `privileged = true` if the loop mount fails with a permission
+error after confirming SYS_ADMIN is being granted.
+
+#### Persistence and restart behavior
+
+- The `.img` file lives at `$HOME/.casefold/project.img` on the **persistent
+  home volume** — it survives workspace stop/start and image rebuilds.
+- On every workspace start, the startup_script checks `mountpoint -q <project_folder>`.
+  If the folder is not yet a mountpoint (e.g. fresh container after a stop/start),
+  it re-attaches the loop mount idempotently. **No data is lost across stop/start.**
+- If the image does not exist yet (first start), it is created and formatted before
+  mounting. Subsequent starts skip the create/format step.
+
+#### LIVE-DEPLOY CAVEAT — mandatory operator verification
+
+> **Static analysis in this repository CANNOT prove this feature works.**
+>
+> Terraform `validate` and `fmt -check` confirm syntax only. Whether a loop mount
+> actually succeeds inside a container with `SYS_ADMIN` depends on the host kernel's
+> loop device support, the Docker version, and the provider configuration — none of
+> which are present or verifiable in this repo.
+>
+> Per project memory (infra-needs-live-deploy-gate): **the operator MUST verify
+> this feature at runtime** before declaring it production-ready. Steps:
+>
+> 1. Build the image and create a workspace with `case_insensitive_project=true`.
+> 2. Confirm the mount exists: `mountpoint -q <project_folder>` (exits 0) and
+>    `lsattr -d <project_folder>` shows the `F` (casefold) attribute.
+> 3. Confirm case-insensitivity: inside the project folder, run
+>    `touch MYFILE.TXT && cat myfile.txt` — both should resolve to the same file.
+> 4. Confirm stop/start persistence: stop the workspace, start it again, verify
+>    files created before the stop are still present and the mount is re-established.
+> 5. Confirm a workspace WITHOUT the parameter has **no** `SYS_ADMIN` capability
+>    and no casefold block output in its startup log.
+
 ---
 
 ## Pre-warming images with bbj-build-combos.sh
