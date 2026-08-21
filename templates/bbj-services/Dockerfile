@@ -146,6 +146,29 @@ RUN apt-get update \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
+# ── ext4 casefold tooling (e2fsprogs + util-linux) ───────────────────────────
+# These packages are only exercised when a workspace opts into the
+# case_insensitive_project parameter (see main.tf): the agent startup_script
+# creates a sparse ext4 loopback image with casefold support and loop-mounts it
+# at the project folder before the git clone, giving case-insensitive filename
+# lookups for Windows-origin codebases (CarIT et al.) on Linux.
+#
+#   e2fsprogs   — provides mkfs.ext4 (with -O casefold / -E encoding=utf8 support,
+#                 requires >= 1.43) and chattr (sets the +F casefold flag on dirs).
+#                 The codercom/enterprise-base:ubuntu base image likely ships a
+#                 recent e2fsprogs already, but this block guarantees both presence
+#                 and a version new enough to carry casefold support.
+#   util-linux  — provides mount and losetup (required by sudo mount -o loop for the
+#                 loopback device setup).
+#
+# Both tools are installed SYSTEM-WIDE via apt into /usr (outside the volume-
+# shadowed /home/coder), so they are available on every workspace start at no
+# per-boot cost.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends e2fsprogs util-linux \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
 # ════════════════════════════════════════════════════════════════════════════
 # Stage: bbjinstall — run the BBj silent install. The ~1.25 GB installer jar is
 # ADDed HERE and never reaches the final image (this whole stage is discarded).
