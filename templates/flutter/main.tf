@@ -308,7 +308,7 @@ resource "coder_agent" "main" {
         let cfg = {};
         try { cfg = JSON.parse(fs.readFileSync(f, "utf8") || "{}") || {}; } catch (e) {}
         cfg.mcpServers = cfg.mcpServers || {};
-        cfg.mcpServers.mempalace = { command: "mempalace", args: ["mcp", "serve"] };
+        cfg.mcpServers.mempalace = { command: "/opt/mempalace/bin/mempalace-mcp", args: [] };
         fs.writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n");
       ' || echo "WARN: could not register MemPalace MCP server; continuing" >&2
     else
