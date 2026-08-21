@@ -387,7 +387,7 @@ resource "coder_agent" "main" {
         let cfg = {};
         try { cfg = JSON.parse(fs.readFileSync(f, "utf8") || "{}") || {}; } catch (e) {}
         cfg.mcpServers = cfg.mcpServers || {};
-        cfg.mcpServers.playwright = { command: "npx", args: ["-y", "@playwright/mcp@latest"] };
+        cfg.mcpServers.playwright = { command: "npx", args: ["-y", "@playwright/mcp@latest", "--browser", "chromium", "--headless"] };
         fs.writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n");
       ' || echo "WARN: could not register Playwright MCP server; continuing" >&2
     else
