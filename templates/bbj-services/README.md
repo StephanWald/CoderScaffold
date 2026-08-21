@@ -226,9 +226,23 @@ following **before** the `git clone` step (so the clone lands inside the mount):
 2. Formats it with `mkfs.ext4 -O casefold -E encoding=utf8` — requires
    `e2fsprogs >= 1.43` (baked into the image via the Dockerfile apt block).
 3. Loop-mounts it at the project folder with `sudo mount -o loop`.
-4. Sets the `+F` casefold flag on the mount root with `chattr +F` (also from
-   `e2fsprogs`), enabling case-insensitive filename lookups for all files
-   created inside the mount.
+4. Removes the `lost+found` entry left by `mkfs` (so the mount root is empty),
+   then sets the `+F` casefold flag on the now-empty root with `chattr +F` (also
+   from `e2fsprogs`). The flag is stored in the on-disk inode and **persists**, so
+   restarts skip re-flagging. This enables case-insensitive filename lookups for
+   all files created inside the mount.
+
+The mount/flag steps run **only inside the successful-mount branch** — if the loop
+mount fails, the ownership/flag operations are skipped so they never mutate the
+underlying home-volume directory.
+
+> **Guard — no git_repo:** the casefold image is mounted at the *project folder*,
+> which is a repo subdirectory (e.g. `/home/coder/CarIT`) only when a `git_repo`
+> is supplied. If `case_insensitive_project=true` is set **without** a `git_repo`,
+> the project folder is the home root (`/home/coder`); mounting there would shadow
+> the entire home volume (`~/.claude-shared`, GSD, dotfiles), so the startup_script
+> **refuses and skips** casefold setup with a warning. Always pair this feature
+> with a `git_repo`.
 
 Every step is **WR-03 non-fatal** (`|| echo "WARN: ...; continuing" >&2`) — a
 mount failure logs a warning and lets the workspace continue starting (without
@@ -247,12 +261,17 @@ do not opt in receive no additional capabilities.
 (see `main.tf`), which gives the `coder` user effective host-root access on a
 single-operator setup. SYS_ADMIN is a narrower grant than the socket implies.
 
-**Fallback:** if `SYS_ADMIN` alone is insufficient to attach a loopback device
-on your host kernel or Docker provider, you can set `privileged = true` on the
-`docker_container.workspace` resource in `main.tf`. This is deliberately **not**
-the default — SYS_ADMIN alone is preferred as it is the minimum necessary grant.
-Only fall back to `privileged = true` if the loop mount fails with a permission
-error after confirming SYS_ADMIN is being granted.
+**Fallback — `case_insensitive_privileged`:** `SYS_ADMIN` grants the `mount`
+syscall but **not** the `/dev/loop*` device nodes that `mount -o loop` needs to
+attach a loopback device. On most Docker hosts those nodes are not exposed to a
+non-privileged container, so the loop mount fails **even with SYS_ADMIN** (the
+startup log shows `loop mount of casefold image failed`). The supported remedy is
+the `case_insensitive_privileged` **template variable**: set it to `true` (e.g.
+`--variable case_insensitive_privileged=true` at `coder templates push`, or in a
+`.tfvars`) and the workspace container runs `privileged = true` — exposing the host
+`/dev` including loop devices — **only** when `case_insensitive_project` is also
+enabled. No hand-editing of `main.tf` required. It defaults to `false` so SYS_ADMIN
+(the narrower grant) is tried first; flip it if the loop mount fails.
 
 #### Persistence and restart behavior
 
