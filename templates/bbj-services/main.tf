@@ -162,6 +162,23 @@ variable "bbj_host_port_bind" {
   default     = "127.0.0.1"
 }
 
+# Escape hatch for the case-insensitive project filesystem (see the
+# case_insensitive_project parameter). Attaching a loopback device with
+# `mount -o loop` requires the /dev/loop* device nodes, which the SYS_ADMIN
+# capability alone does NOT provide inside a container — on most Docker hosts the
+# loop mount fails unless the container is privileged. Set this to true to run the
+# workspace container privileged WHEN (and only when) case_insensitive_project is
+# also enabled; opt-out workspaces are never affected. Left false, the template
+# grants only SYS_ADMIN (the narrower, preferred grant) and the loop mount may fail
+# on hosts without loop-device passthrough — see README FLAG-04. This is a template
+# variable (set with `--variable case_insensitive_privileged=true` at push time or a
+# .tfvars), so operators need not hand-edit main.tf to fall back to privileged.
+variable "case_insensitive_privileged" {
+  description = "Run the workspace container privileged (only when case_insensitive_project is also enabled) so the ext4 casefold loop mount can attach a loopback device. SYS_ADMIN alone is often insufficient for loop mounts. Default false = SYS_ADMIN only. See README FLAG-04."
+  type        = bool
+  default     = false
+}
+
 # ── Workspace parameters (prompted at create time) ────────────────────────────
 
 # Optional Git repository to clone on first start. Empty = start with an empty
@@ -480,38 +497,65 @@ resource "coder_agent" "main" {
     if [ "${data.coder_parameter.case_insensitive_project.value}" = "true" ]; then
       IMG="$HOME/.casefold/project.img"
       MP="${local.project_folder}"
-      mkdir -p "$HOME/.casefold" "$MP" \
-        || echo "WARN: could not create casefold dirs; continuing" >&2
 
-      # Create the sparse image and format it only on first workspace start.
-      # truncate -s creates a sparse file (no upfront allocation); mkfs.ext4 -O
-      # casefold enables the kernel unicode casefold feature (requires e2fsprogs
-      # >= 1.43 and CONFIG_UNICODE in the host kernel). -E encoding=utf8 selects
-      # the encoding table. -F suppresses the "not a block device" warning.
-      if [ ! -f "$IMG" ]; then
-        truncate -s ${data.coder_parameter.case_insensitive_size_gb.value}G "$IMG" \
-          || echo "WARN: truncate casefold image failed; continuing" >&2
-        mkfs.ext4 -O casefold -E encoding=utf8 -F "$IMG" \
-          || echo "WARN: mkfs.ext4 casefold failed; continuing" >&2
-      fi
+      # GUARD: never mount over the home root. local.project_folder resolves to
+      # /home/coder ONLY when no git_repo was supplied. Loop-mounting the casefold
+      # image there would shadow the ENTIRE home volume — hiding ~/.claude-shared
+      # (a separate nested mount), the GSD install, dotfiles, and .init_done — and
+      # break the workspace. The feature is meaningful only for a project SUBDIR,
+      # which is exactly what CarIT (cloned via git_repo) produces. If enabled
+      # without a repo, skip with a clear message rather than corrupt the home.
+      if [ "$MP" = "$HOME" ] || [ "$MP" = "/home/coder" ]; then
+        echo "WARN: case_insensitive_project is enabled but no git_repo was set, so the project folder is the home root ($MP). Refusing to mount the casefold image over the entire home volume. Set a git_repo so the project folder is a subdirectory; the casefold mount will then apply to it. Skipping casefold setup." >&2
+      else
+        mkdir -p "$HOME/.casefold" "$MP" \
+          || echo "WARN: could not create casefold dirs; continuing" >&2
 
-      # Loop-mount idempotently: skip if already a mountpoint (restart path).
-      if ! mountpoint -q "$MP"; then
-        sudo mount -o loop "$IMG" "$MP" \
-          || echo "WARN: loop mount of casefold image failed; continuing" >&2
-        # Fix ownership so coder can write into the mounted directory.
-        sudo chown coder:coder "$MP" \
-          || echo "WARN: chown casefold mountpoint failed; continuing" >&2
-        # Set the casefold flag (F) on the freshly-mounted root inode.
-        # chattr +F requires the directory to be EMPTY — this is satisfied on
-        # first start (the image was just formatted) and on restarts (the project
-        # folder's contents live inside the image, so the mount root IS empty from
-        # the host perspective after mkfs). If chattr +F on the mount root is not
-        # supported at runtime (some kernel/e2fsprogs combos require it at mkfs
-        # time only), the documented fallback is to create and chattr a subdir
-        # inside the mount and use that as the clone target instead.
-        chattr +F "$MP" \
-          || echo "WARN: chattr +F casefold flag failed (may need kernel >= 5.2 with CONFIG_UNICODE or subdir fallback); continuing" >&2
+        # Create the sparse image and format it only on first workspace start.
+        # truncate -s creates a sparse file (no upfront allocation); mkfs.ext4 -O
+        # casefold enables the kernel unicode casefold feature (requires e2fsprogs
+        # >= 1.43 and CONFIG_UNICODE in the host kernel). -E encoding=utf8 selects
+        # the encoding table. -F suppresses the "not a block device" warning.
+        if [ ! -f "$IMG" ]; then
+          truncate -s ${data.coder_parameter.case_insensitive_size_gb.value}G "$IMG" \
+            || echo "WARN: truncate casefold image failed; continuing" >&2
+          mkfs.ext4 -O casefold -E encoding=utf8 -F "$IMG" \
+            || echo "WARN: mkfs.ext4 casefold failed; continuing" >&2
+        fi
+
+        # Loop-mount idempotently: skip if already a mountpoint (restart path).
+        # CRITICAL: chown/lost+found-removal/chattr run ONLY inside the successful
+        # mount branch — otherwise a failed mount would leave them operating on the
+        # underlying home-volume directory (mutating real home data, not the image).
+        if ! mountpoint -q "$MP"; then
+          if sudo mount -o loop "$IMG" "$MP"; then
+            # Fix ownership so coder can write into the mounted directory.
+            sudo chown coder:coder "$MP" \
+              || echo "WARN: chown casefold mountpoint failed; continuing" >&2
+
+            # The ext4 'casefold' feature only ENABLES per-directory case folding;
+            # the +F flag must still be set on an EMPTY directory. A fresh mkfs
+            # leaves a lost+found entry, so the mount root is NOT empty and a naive
+            # `chattr +F` on it fails. Remove lost+found first (it is only used by
+            # fsck and is expendable on a loopback dev image), then flag the now-
+            # empty root. The flag is stored in the on-disk inode and PERSISTS, so
+            # on restarts the root is non-empty (holds the clone) and the emptiness
+            # guard below correctly skips re-flagging (avoiding a spurious failure).
+            if [ -d "$MP/lost+found" ]; then
+              sudo rm -rf "$MP/lost+found" \
+                || echo "WARN: could not remove lost+found; casefold flag may not apply; continuing" >&2
+            fi
+            if [ -z "$(ls -A "$MP" 2>/dev/null)" ]; then
+              chattr +F "$MP" \
+                || echo "WARN: chattr +F on casefold root failed (needs an empty dir + kernel CONFIG_UNICODE; fallback: flag an empty subdir and clone into it); continuing" >&2
+            fi
+          else
+            # Mount failed — most commonly because SYS_ADMIN alone cannot set up a
+            # loop device without the /dev/loop* nodes (see README FLAG-04: the
+            # reliable fallback is privileged = true on the workspace container).
+            echo "WARN: loop mount of casefold image failed; the project folder will remain case-SENSITIVE. SYS_ADMIN alone is often insufficient for loop mounts — set privileged = true (see README FLAG-04). Continuing." >&2
+          fi
+        fi
       fi
     fi
 
@@ -734,6 +778,15 @@ resource "docker_container" "workspace" {
       protocol = "tcp"
     }
   }
+
+  # Privileged escape hatch for the casefold loop mount — ON only when the
+  # workspace opted into case_insensitive_project AND the operator set the
+  # case_insensitive_privileged variable. Privileged exposes the host /dev
+  # (including the /dev/loop* nodes that SYS_ADMIN alone does not provide), which
+  # is what makes `mount -o loop` reliably succeed inside the container. For every
+  # opt-out workspace this evaluates to false (the Docker default) — no behavioral
+  # change. See README FLAG-04 and the case_insensitive_privileged variable.
+  privileged = data.coder_parameter.case_insensitive_project.value ? var.case_insensitive_privileged : false
 
   # SYS_ADMIN capability for the ext4 casefold loop mount.
   # Granted ONLY when case_insensitive_project = true (mirrors the dynamic "ports"
