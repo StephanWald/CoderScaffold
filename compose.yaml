@@ -18,6 +18,10 @@ services:
       # here. Coder refreshes the session on activity unless
       # CODER_DISABLE_SESSION_EXPIRY_REFRESH=true, so this is effectively the
       # idle/absolute cap before re-authentication is required.
+      # NOTE (OIDC): this duration only holds if Coder can silently refresh the
+      # upstream OIDC link. Google's tokens expire after 1h, so without a working
+      # refresh token Coder logs you out at the 1h mark regardless of this value —
+      # see CODER_OIDC_AUTH_URL_PARAMS / CODER_OIDC_SCOPES below.
       CODER_SESSION_DURATION: "${CODER_SESSION_DURATION:-168h}"
       # Google login via OIDC (opt-in). Coder only ENABLES OIDC when
       # CODER_OIDC_CLIENT_ID is non-empty, so these defaults leave sign-in
@@ -27,7 +31,17 @@ services:
       CODER_OIDC_ISSUER_URL: "${CODER_OIDC_ISSUER_URL:-https://accounts.google.com}"
       CODER_OIDC_CLIENT_ID: "${CODER_OIDC_CLIENT_ID:-}"          # empty = OIDC disabled
       CODER_OIDC_CLIENT_SECRET: "${CODER_OIDC_CLIENT_SECRET:-}"  # sensitive; set in .env
-      CODER_OIDC_SCOPES: "${CODER_OIDC_SCOPES:-openid,profile,email}"
+      # offline_access is required for the IdP to issue a refresh token, which
+      # Coder uses to silently renew the OIDC link and keep sessions alive up to
+      # CODER_SESSION_DURATION (above). Without it, Google logs users out after 1h.
+      CODER_OIDC_SCOPES: "${CODER_OIDC_SCOPES:-openid,profile,email,offline_access}"
+      # Extra auth-URL params sent to the IdP. For Google, a refresh token is only
+      # issued when access_type=offline, and it is only RE-issued to an already-
+      # consented user when prompt=consent forces the consent screen again. This is
+      # what actually stops the "logged out after ~1 hour" behavior with Google.
+      # IMPORTANT: existing users must log out and log back in once (re-consent) so
+      # Google hands Coder a refresh token; only then does the 7-day session hold.
+      CODER_OIDC_AUTH_URL_PARAMS: '${CODER_OIDC_AUTH_URL_PARAMS:-{"access_type":"offline","prompt":"consent"}}'
       # Comma-separated allowed email domains. Restricts logins on the Coder
       # side regardless of who owns the Google project; empty = allow any.
       CODER_OIDC_EMAIL_DOMAIN: "${CODER_OIDC_EMAIL_DOMAIN:-basis.cloud}"
