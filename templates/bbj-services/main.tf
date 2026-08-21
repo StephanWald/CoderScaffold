@@ -200,6 +200,39 @@ data "coder_parameter" "bbj_stack" {
   }
 }
 
+# Optional ext4 casefold loopback image — create-time opt-in for case-insensitive
+# project folder. Default OFF (false): a workspace that does not set this parameter
+# is byte-for-byte identical to the baseline (no capabilities block, no casefold
+# block runs). mutable = false: the filesystem type is a create-time decision;
+# changing it after clone would corrupt the mount chain.
+data "coder_parameter" "case_insensitive_project" {
+  name         = "case_insensitive_project"
+  display_name = "Case-insensitive project folder"
+  description  = "When enabled, the project folder is backed by an ext4 casefold loopback image, making file-name lookups case-insensitive (e.g. Foo.bbj and foo.bbj resolve to the same file). Intended for CarIT and other Windows-origin codebases that assume a case-insensitive filesystem. Create-time only (mutable = false) — a different setting requires a new workspace."
+  type         = "bool"
+  default      = "false"
+  mutable      = false
+  icon         = "/icon/folder.svg"
+  order        = 3
+}
+
+# Size of the casefold loopback image in gigabytes. Only used when
+# case_insensitive_project = true. The image is sparse (truncate -s), so it
+# consumes real space only as data is written — the number here is a ceiling,
+# not an upfront allocation. mutable = false: resizing the image on an existing
+# workspace would require unmounting, resize2fs, and re-mounting — out of scope
+# for the startup_script; a new workspace is the upgrade path.
+data "coder_parameter" "case_insensitive_size_gb" {
+  name         = "case_insensitive_size_gb"
+  display_name = "Case-insensitive image size (GB)"
+  description  = "Size of the sparse ext4 casefold loopback image in gigabytes. Only relevant when 'Case-insensitive project folder' is enabled. The image is sparse (truncate -s), so this is a ceiling, not an upfront allocation. Default 20 GB is sufficient for most codebases."
+  type         = "number"
+  default      = "20"
+  mutable      = false
+  icon         = "/icon/folder.svg"
+  order        = 4
+}
+
 # ── Providers ─────────────────────────────────────────────────────────────────
 
 provider "docker" {
@@ -422,6 +455,66 @@ resource "coder_agent" "main" {
       fi
     fi
 
+    # ── Case-insensitive project folder (ext4 casefold loopback) ─────────────
+    # MECHANISM: when case_insensitive_project=true, a sparse ext4 image file is
+    # created at $HOME/.casefold/project.img on the persistent home volume and
+    # loop-mounted at the project folder BEFORE the git clone below. From inside
+    # the mount, filename lookups are case-insensitive via the kernel-native
+    # ext4 casefold feature (CONFIG_UNICODE, same mechanism used by Android/Proton).
+    # PURPOSE: CarIT and similar Windows-origin codebases assume a case-insensitive
+    # filesystem; on a normal Linux ext4 mount Foo.bbj and foo.bbj are distinct files,
+    # which breaks those projects. This block gives case-insensitive lookup without
+    # FUSE or a host bind-mount.
+    # SYS_ADMIN DEPENDENCY: sudo mount -o loop requires SYS_ADMIN capability.
+    # The docker_container.workspace dynamic "capabilities" block in main.tf adds
+    # SYS_ADMIN ONLY when this parameter is true (mirroring the dynamic "ports"
+    # pattern), so non-opt-in workspaces have no additional privileges.
+    # PERSISTENCE: the .img file lives on the home volume and survives stop/start.
+    # The idempotent mountpoint guard (mountpoint -q) re-establishes the loop mount
+    # on every start without double-mounting or losing data.
+    # RUNTIME CAVEAT: whether the loop mount actually works inside a container with
+    # SYS_ADMIN depends on the host kernel and provider; the documented fallback is
+    # privileged = true (see the capabilities block comment in main.tf). Static
+    # analysis CANNOT prove this works — see the README for the required live-deploy
+    # verification steps.
+    if [ "${data.coder_parameter.case_insensitive_project.value}" = "true" ]; then
+      IMG="$HOME/.casefold/project.img"
+      MP="${local.project_folder}"
+      mkdir -p "$HOME/.casefold" "$MP" \
+        || echo "WARN: could not create casefold dirs; continuing" >&2
+
+      # Create the sparse image and format it only on first workspace start.
+      # truncate -s creates a sparse file (no upfront allocation); mkfs.ext4 -O
+      # casefold enables the kernel unicode casefold feature (requires e2fsprogs
+      # >= 1.43 and CONFIG_UNICODE in the host kernel). -E encoding=utf8 selects
+      # the encoding table. -F suppresses the "not a block device" warning.
+      if [ ! -f "$IMG" ]; then
+        truncate -s ${data.coder_parameter.case_insensitive_size_gb.value}G "$IMG" \
+          || echo "WARN: truncate casefold image failed; continuing" >&2
+        mkfs.ext4 -O casefold -E encoding=utf8 -F "$IMG" \
+          || echo "WARN: mkfs.ext4 casefold failed; continuing" >&2
+      fi
+
+      # Loop-mount idempotently: skip if already a mountpoint (restart path).
+      if ! mountpoint -q "$MP"; then
+        sudo mount -o loop "$IMG" "$MP" \
+          || echo "WARN: loop mount of casefold image failed; continuing" >&2
+        # Fix ownership so coder can write into the mounted directory.
+        sudo chown coder:coder "$MP" \
+          || echo "WARN: chown casefold mountpoint failed; continuing" >&2
+        # Set the casefold flag (F) on the freshly-mounted root inode.
+        # chattr +F requires the directory to be EMPTY — this is satisfied on
+        # first start (the image was just formatted) and on restarts (the project
+        # folder's contents live inside the image, so the mount root IS empty from
+        # the host perspective after mkfs). If chattr +F on the mount root is not
+        # supported at runtime (some kernel/e2fsprogs combos require it at mkfs
+        # time only), the documented fallback is to create and chattr a subdir
+        # inside the mount and use that as the clone target instead.
+        chattr +F "$MP" \
+          || echo "WARN: chattr +F casefold flag failed (may need kernel >= 5.2 with CONFIG_UNICODE or subdir fallback); continuing" >&2
+      fi
+    fi
+
     # ── Optional project repo clone (git_repo parameter) ──────────────────────
     # Clone the user-supplied repo into the derived project folder on first start.
     # Idempotent: skip if the checkout already exists. Non-fatal (WR-03).
@@ -639,6 +732,25 @@ resource "docker_container" "workspace" {
       external = var.bbj_host_port
       ip       = var.bbj_host_port_bind
       protocol = "tcp"
+    }
+  }
+
+  # SYS_ADMIN capability for the ext4 casefold loop mount.
+  # Granted ONLY when case_insensitive_project = true (mirrors the dynamic "ports"
+  # pattern above). When the parameter is false (the default), this block is absent
+  # and the container has NO additional privileges — non-opt-in workspaces are
+  # byte-for-byte unchanged. SYS_ADMIN is the minimum capability required for
+  # sudo mount -o loop (the loop mount in the casefold startup_script block).
+  # This is NOT a new privilege escalation: /var/run/docker.sock is already mounted
+  # below (~line 665 in the original), and a process that can write to the Docker
+  # socket already has effective host-root access on this single-operator setup.
+  # If loop devices are not available to SYS_ADMIN alone in this provider/kernel
+  # configuration, the documented fallback is to set privileged = true on this
+  # container — do NOT default to privileged; SYS_ADMIN alone is preferred.
+  dynamic "capabilities" {
+    for_each = data.coder_parameter.case_insensitive_project.value ? [1] : []
+    content {
+      add = ["SYS_ADMIN"]
     }
   }
 
