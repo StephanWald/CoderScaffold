@@ -4,9 +4,9 @@ milestone: v1.1
 milestone_name: Portable Claude Code Setup
 status: Awaiting next milestone
 stopped_at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
-last_updated: "2026-08-23T06:10:13.834Z"
-last_activity: 2026-08-21
-last_activity_desc: "Completed quick task 260821-ce8: replaced invalid mempalace mcp serve invocation with /opt/mempalace/bin/mempalace-mcp (empty args) in all 5 workspace templates; static grep PASS (new form in all 5; old form absent; 5 files changed)"
+last_updated: "2026-08-23T07:04:55.977Z"
+last_activity: 2026-08-23
+last_activity_desc: "Completed quick task 260823-8wn: baked tmux + a guarded `/etc/profile.d` auto-attach snippet into all six workspace Dockerfiles (durable interactive sessions surviving client disconnect/hibernate) and documented SSH keepalives in the README. Snippets POSIX-verified; runtime confirmation still needs an image rebuild + reconnect test."
 progress:
   total_phases: 0
   completed_phases: 0
@@ -161,6 +161,7 @@ None. All planned work for milestone v1.1 is complete.
 | 43 | Fix Google OIDC 1h logout: add offline_access scope + CODER_OIDC_AUTH_URL_PARAMS {access_type=offline,prompt=consent} defaults in compose.yaml so refresh tokens are issued and CODER_SESSION_DURATION=168h actually holds; docker compose config verified JSON default interpolates intact | 2026-08-21 | cfdd23f | — |
 | 44 | Make /bin/bash the explicit default shell in all workspace template containers (usermod + ENV SHELL) | 2026-08-23 | e31accd | — |
 | 260823-8wn | Durable interactive sessions: bake tmux + guarded `/etc/profile.d/10-tmux-autoattach.sh` (interactive+TTY+not-in-tmux+not-VS-Code) into all six workspace Dockerfiles so browser/`coder ssh` terminals survive client disconnect/hibernate; README SSH keepalive docs (`config-ssh` ServerAlive*/TCPKeepAlive + VS Code `remote.SSH`). Snippets POSIX-valid (`sh -n`/`dash -n`); grep-verified across all six. **Runtime not yet verified** — needs image rebuild + reconnect test (infra-needs-live-deploy-gate). | 2026-08-23 | 75f0200 | [260823-8wn-durable-interactive-sessions-in-workspac](./quick/260823-8wn-durable-interactive-sessions-in-workspac/) |
+| 46 | Harden tmux auto-attach for interactive non-login shells (source snippet from /etc/bash.bashrc in all six templates); rebuild-verified: non-login+TTY attaches, all guards hold, scp/non-interactive clean, no recursion (commit af46b08) | 2026-08-23 | af46b08 | — |
 
 ## Deferred Items
 
