@@ -651,6 +651,54 @@ to "Connected". Check:
 - For production deployments: verify `CODER_ACCESS_URL` is reachable from a container running
   on the Docker host network. `127.0.0.1` will not work — use a real IP or domain.
 
+### Durable interactive sessions (tmux + SSH keepalives)
+
+Interactive workspace sessions can **die** (the shell process exits when the client disconnects)
+or **hang** (the TCP connection is half-open after a laptop sleeps and never resets). Two
+complementary mechanisms fix these:
+
+**Server-side persistence — tmux auto-attach (baked into workspace images)**
+
+All six workspace images install `tmux` and drop `/etc/profile.d/10-tmux-autoattach.sh`. When
+you open a browser terminal or run `coder ssh`, the login shell automatically attaches to (or
+creates) a persistent tmux session named `main`. When you disconnect or your laptop hibernates,
+the tmux session keeps running in the container. Reconnecting re-attaches the same session —
+your running processes, shell history, and working directory are exactly where you left them.
+
+> **Note:** This behaviour takes effect only in workspaces built from a **rebuilt** image.
+> Existing running workspaces do not pick it up until the image is rebuilt and the workspace
+> is restarted.
+
+The auto-attach snippet is guarded so it only fires for real interactive TTY login shells. It
+is **inert** for non-interactive shells, one-shot `coder ssh -- <cmd>` invocations, scp/rsync,
+and VS Code Remote-SSH server shells (which must stay bare for VS Code's own reconnect and
+shell integration to work).
+
+**Client-side liveness — SSH keepalives**
+
+Keepalives make the SSH client detect a half-open TCP link (dropped Wi-Fi, laptop sleep) within
+~90 seconds and reset the connection instead of hanging indefinitely. Add them to the SSH config
+that `coder config-ssh` writes:
+
+```bash
+coder config-ssh \
+  --ssh-option "ServerAliveInterval=30" \
+  --ssh-option "ServerAliveCountMax=3" \
+  --ssh-option "TCPKeepAlive=yes"
+```
+
+This writes to `~/.ssh/config` under the `Host coder.*` block. If you prefer to edit it
+manually, add the same three options to that block directly.
+
+**VS Code `remote.SSH`:** VS Code honors `ServerAliveInterval` from the SSH config that
+`coder config-ssh` writes, so no extra VS Code setting is needed for keepalives. For slow
+reconnects, increasing `remote.SSH.connectTimeout` (default 15 s) in VS Code settings can
+help.
+
+Together, tmux (server-side persistence) and keepalives (client-side liveness) solve both
+failure modes: tmux keeps your session alive through the disconnect; keepalives ensure the
+client detects and resets a stale link so you can reconnect rather than wait for a TCP timeout.
+
 ### Home directory persistence
 
 Workspace home directories (`/home/coder`) are stored in per-workspace Docker volumes and
