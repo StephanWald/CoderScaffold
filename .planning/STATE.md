@@ -6,7 +6,7 @@ status: Awaiting next milestone
 stopped_at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
 last_updated: "2026-08-23T07:04:55.977Z"
 last_activity: 2026-08-23
-last_activity_desc: "Completed quick task 260823-8wn: baked tmux + a guarded `/etc/profile.d` auto-attach snippet into all six workspace Dockerfiles (durable interactive sessions surviving client disconnect/hibernate) and documented SSH keepalives in the README. Snippets POSIX-verified; runtime confirmation still needs an image rebuild + reconnect test."
+last_activity_desc: "Completed quick task 260823-qz4: baked a system-wide `/etc/tmux.conf` (`set -g mouse on` + `set -g history-limit 50000`) into all six workspace Dockerfiles, giving the durable web-terminal tmux session wheel-scroll/click-select/drag-resize and 50k-line scrollback. grep-verified across all six; runtime confirmation still needs an image rebuild + reconnect test."
 progress:
   total_phases: 0
   completed_phases: 0
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-23 — Completed quick task 260823-8wn: baked tmux + a guarded `/etc/profile.d` auto-attach snippet into all six workspace Dockerfiles (durable interactive sessions surviving client disconnect/hibernate) and documented SSH keepalives in the README. Snippets POSIX-verified; runtime confirmation still needs an image rebuild + reconnect test.
+Last activity: 2026-08-23 — Completed quick task 260823-qz4: baked a system-wide `/etc/tmux.conf` (`set -g mouse on` + `set -g history-limit 50000`) into all six workspace Dockerfiles, giving the durable web-terminal tmux session wheel-scroll/click-select/drag-resize and 50k-line scrollback. grep-verified across all six; runtime confirmation still needs an image rebuild + reconnect test.
 Previous activity: 2026-08-21 — Completed quick task 260821-ihu: added optional per-workspace case-insensitive project filesystem (ext4 casefold loopback) to bbj-services for the CarIT Windows codebase; opt-in params + SYS_ADMIN/privileged escape hatch, hardened against home-shadow and lost+found defects; terraform validate PASS; runtime loop-mount verification still required (live deploy)
 Previous activity: 2026-08-16 — Completed quick task 260816-a62: removed baked-in PostgreSQL + pgvector from python-ai template (redundant now that docker-outside-of-docker is configured — run pgvector as a container instead)
 
@@ -162,6 +162,7 @@ None. All planned work for milestone v1.1 is complete.
 | 44 | Make /bin/bash the explicit default shell in all workspace template containers (usermod + ENV SHELL) | 2026-08-23 | e31accd | — |
 | 260823-8wn | Durable interactive sessions: bake tmux + guarded `/etc/profile.d/10-tmux-autoattach.sh` (interactive+TTY+not-in-tmux+not-VS-Code) into all six workspace Dockerfiles so browser/`coder ssh` terminals survive client disconnect/hibernate; README SSH keepalive docs (`config-ssh` ServerAlive*/TCPKeepAlive + VS Code `remote.SSH`). Snippets POSIX-valid (`sh -n`/`dash -n`); grep-verified across all six. **Runtime not yet verified** — needs image rebuild + reconnect test (infra-needs-live-deploy-gate). | 2026-08-23 | 75f0200 | [260823-8wn-durable-interactive-sessions-in-workspac](./quick/260823-8wn-durable-interactive-sessions-in-workspac/) |
 | 46 | Harden tmux auto-attach for interactive non-login shells (source snippet from /etc/bash.bashrc in all six templates); rebuild-verified: non-login+TTY attaches, all guards hold, scp/non-interactive clean, no recursion (commit af46b08) | 2026-08-23 | af46b08 | — |
+| 260823-qz4 | tmux quality-of-life: bake system-wide `/etc/tmux.conf` (`set -g mouse on` + `set -g history-limit 50000`) into all six workspace Dockerfiles so the durable web-terminal session gets wheel-scroll/click-select/drag-resize and 50k-line scrollback (up from 2000). Placed beside the auto-attach block (base stage in bbj-services so final inherits). grep-verified across all six. **Runtime not yet verified** — needs image rebuild + reconnect test (infra-needs-live-deploy-gate). | 2026-08-23 | d704825 | [260823-qz4-tmux-mouse-mode-and-larger-scrollback](./quick/260823-qz4-tmux-mouse-mode-and-larger-scrollback/) |
 
 ## Deferred Items
 
