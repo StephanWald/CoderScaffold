@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: Portable Claude Code Setup
 status: Awaiting next milestone
 stopped_at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
-last_updated: "2026-08-21T14:09:45.210Z"
+last_updated: "2026-08-23T06:10:13.834Z"
 last_activity: 2026-08-21
 last_activity_desc: "Completed quick task 260821-ce8: replaced invalid mempalace mcp serve invocation with /opt/mempalace/bin/mempalace-mcp (empty args) in all 5 workspace templates; static grep PASS (new form in all 5; old form absent; 5 files changed)"
 progress:
@@ -159,6 +159,7 @@ None. All planned work for milestone v1.1 is complete.
 | 260821-c9d | Fix Playwright MCP server registration in all 3 templates: appended `--browser chromium --headless` to the `@playwright/mcp@latest` args array in python-ai/java-fullstack/bbj-services startup_scripts — selects the baked `/ms-playwright` chromium over the missing Google Chrome channel, and runs headless (no `$DISPLAY`). Static grep verification PASS (new 5-element args form in all 3; old 2-element form absent; git diff: 3 files, 3 insertions, 3 deletions) | 2026-08-21 | df8482e | [260821-c9d-fix-playwright-mcp-server-registration-i](./quick/260821-c9d-fix-playwright-mcp-server-registration-i/) |
 | 260821-ihu | Optional per-workspace case-insensitive project filesystem for bbj-services (CarIT/Windows): opt-in `case_insensitive_project` bool + `case_insensitive_size_gb` params, ext4 casefold loopback image loop-mounted at the project folder before git clone, `dynamic "capabilities"` SYS_ADMIN only when enabled, `case_insensitive_privileged` variable for loop-device fallback; e2fsprogs+util-linux baked into Dockerfile. Review fixes: home-shadow guard (no-repo), lost+found removal so `chattr +F` applies, mount-branch scoping. `terraform validate` PASS. **Runtime not yet verified** — loop mount inside container needs live deploy (see infra-needs-live-deploy-gate + README FLAG-04). | 2026-08-21 | 52f6fa2 | [260821-ihu-add-optional-case-insensitive-project-fi](./quick/260821-ihu-add-optional-case-insensitive-project-fi/) |
 | 43 | Fix Google OIDC 1h logout: add offline_access scope + CODER_OIDC_AUTH_URL_PARAMS {access_type=offline,prompt=consent} defaults in compose.yaml so refresh tokens are issued and CODER_SESSION_DURATION=168h actually holds; docker compose config verified JSON default interpolates intact | 2026-08-21 | cfdd23f | — |
+| 44 | Make /bin/bash the explicit default shell in all workspace template containers (usermod + ENV SHELL) | 2026-08-23 | e31accd | — |
 
 ## Deferred Items
 
