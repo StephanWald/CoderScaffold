@@ -122,6 +122,23 @@ RUN printf '%s\n' \
       'if [ -f /etc/profile.d/10-tmux-autoattach.sh ]; then . /etc/profile.d/10-tmux-autoattach.sh; fi' \
       >> /etc/bash.bashrc
 
+# System-wide tmux config. /etc/tmux.conf is tmux's global config file, read at
+# server start before any user config — and it lives on the image, so it survives
+# the volume-shadowed /home/coder at runtime just like the auto-attach snippet
+# above (a ~/.tmux.conf would be masked by the mounted home). Two quality-of-life
+# defaults for the browser web terminal's durable `tmux new -A -s main` session:
+#   mouse on      — wheel-scroll into scrollback, click-to-select pane/window, and
+#                   drag-to-resize; without it the web terminal can't reach tmux's
+#                   scrollback at all (tmux owns the alternate screen).
+#   history-limit — raise per-pane scrollback from tmux's 2000-line default to
+#                   50000 lines so long build/test output stays reviewable.
+RUN printf '%s\n' \
+      '# /etc/tmux.conf — system-wide defaults for the durable `tmux new -A -s main` session.' \
+      'set -g mouse on' \
+      'set -g history-limit 50000' \
+      > /etc/tmux.conf \
+ && chmod 0644 /etc/tmux.conf
+
 # Make bash the explicit default shell. The base image already sets the coder
 # user's login shell to /bin/bash, but pin it here so the intent survives a
 # base-image change, and export SHELL (unset in the base image) so non-login
