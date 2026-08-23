@@ -230,6 +230,19 @@ RUN printf '%s\n' \
       > /etc/profile.d/10-tmux-autoattach.sh \
  && chmod 0644 /etc/profile.d/10-tmux-autoattach.sh
 
+# Also cover interactive NON-login shells (e.g. the Coder browser web terminal),
+# which read /etc/bash.bashrc — sourced by Ubuntu bash for interactive shells via
+# SYS_BASHRC — NOT /etc/profile.d (that path is login-shell only). /etc/bash.bashrc
+# lives on the image, unlike the volume-shadowed ~/.bashrc under /home/coder, so it
+# survives at runtime. The sourced snippet is fully self-guarded (interactive + TTY
+# + not-already-in-tmux + not-VS-Code), so sourcing it from both entry points is
+# idempotent: no double-attach, no recursion (the shell tmux spawns has $TMUX set).
+RUN printf '%s\n' \
+      '' \
+      '# Auto-attach tmux for interactive non-login shells (login shells use /etc/profile.d).' \
+      'if [ -f /etc/profile.d/10-tmux-autoattach.sh ]; then . /etc/profile.d/10-tmux-autoattach.sh; fi' \
+      >> /etc/bash.bashrc
+
 # Make bash the explicit default shell. The base image already sets the coder
 # user's login shell to /bin/bash, but pin it here so the intent survives a
 # base-image change, and export SHELL (unset in the base image) so non-login
