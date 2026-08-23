@@ -202,4 +202,12 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 #       mounts, etc.). This is acceptable for a single-operator self-hosted setup
 #       but is NOT appropriate for a shared or multi-tenant team deployment.
 
+# Make bash the explicit default shell. The base image already sets the coder
+# user's login shell to /bin/bash, but pin it here so the intent survives a
+# base-image change, and export SHELL (unset in the base image) so non-login
+# contexts — the Coder agent web terminal, coder_script, tools that read $SHELL —
+# all agree on bash.
+RUN usermod -s /bin/bash coder
+ENV SHELL=/bin/bash
+
 USER coder
