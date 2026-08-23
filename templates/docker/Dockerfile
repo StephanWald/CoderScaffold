@@ -66,6 +66,49 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 #       mounts, etc.). This is acceptable for a single-operator self-hosted setup
 #       but is NOT appropriate for a shared or multi-tenant team deployment.
 
+# ── tmux (terminal multiplexer for durable interactive sessions) ─────────────
+# Installs tmux so that interactive workspace sessions survive client disconnect
+# or hibernate. The guarded auto-attach profile.d snippet below (10-tmux-autoattach.sh)
+# wraps every interactive login shell in a persistent tmux session named `main`;
+# reconnecting via the browser terminal or `coder ssh` re-attaches the same live
+# session instead of starting a dead new one. tmux runs as the unprivileged `coder`
+# user — no new privilege boundary. Installed into /usr (outside /home/coder) so
+# the binary survives the home-volume mount at runtime. Takes effect only after
+# an image REBUILD — existing running workspaces need a rebuild to pick this up.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tmux \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# Drop a guarded auto-attach snippet into /etc/profile.d/ (image layer, not home
+# — /home/coder is a Docker volume that shadows the image at runtime, so anything
+# written under home would be invisible in a running workspace). The snippet is
+# POSIX-sh safe (it is sourced by the login shell, not executed as bash). It only
+# exec-replaces the login shell with `tmux new -A -s main` when ALL guards hold:
+# interactive shell, stdout is a TTY, not already inside tmux, tmux on PATH, and
+# not a VS Code Remote-SSH / server shell (which sets VSCODE_INJECTION or
+# VSCODE_IPC_HOOK_CLI and must stay bare for its own reconnect + shell integration).
+# Non-interactive shells, one-shot `coder ssh -- <cmd>` invocations, and scp/rsync
+# are all excluded by the interactive + TTY guards. The fall-through path must never
+# exit or return, or every non-matching shell dies.
+RUN printf '%s\n' \
+      '# /etc/profile.d/10-tmux-autoattach.sh' \
+      '# Auto-attach a persistent tmux session for interactive login shells.' \
+      '# Guards: interactive ($- has i), TTY (fd 1), not already in tmux ($TMUX),' \
+      '# tmux on PATH, not VS Code Remote-SSH (VSCODE_INJECTION/VSCODE_IPC_HOOK_CLI).' \
+      '# One-shot `coder ssh -- cmd` and scp/rsync are excluded by the interactive+TTY guards.' \
+      '# Fall-through is always safe — the parent shell continues normally.' \
+      'case "$-" in' \
+      '  *i*)' \
+      '    if [ -t 1 ] && [ -z "$TMUX" ] && command -v tmux >/dev/null 2>&1 \' \
+      '         && [ -z "$VSCODE_INJECTION" ] && [ -z "$VSCODE_IPC_HOOK_CLI" ]; then' \
+      '      exec tmux new -A -s main' \
+      '    fi' \
+      '    ;;' \
+      'esac' \
+      > /etc/profile.d/10-tmux-autoattach.sh \
+ && chmod 0644 /etc/profile.d/10-tmux-autoattach.sh
+
 # Make bash the explicit default shell. The base image already sets the coder
 # user's login shell to /bin/bash, but pin it here so the intent survives a
 # base-image change, and export SHELL (unset in the base image) so non-login

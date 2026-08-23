@@ -139,7 +139,7 @@ RUN set -eux; \
 # every workspace start with no per-boot cost. Its MCP server is registered in
 # the agent startup_script; data persists under ~/.mempalace on the home volume.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 python3-venv \
+ && apt-get install -y --no-install-recommends python3 python3-venv tmux \
  && python3 -m venv /opt/mempalace \
  && /opt/mempalace/bin/pip install --no-cache-dir mempalace \
  && ln -sf /opt/mempalace/bin/mempalace /usr/local/bin/mempalace \
@@ -201,6 +201,34 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 #       workspace can start privileged containers, read host files via volume
 #       mounts, etc.). This is acceptable for a single-operator self-hosted setup
 #       but is NOT appropriate for a shared or multi-tenant team deployment.
+
+# ── tmux auto-attach (durable interactive sessions) ──────────────────────────
+# tmux was installed above (folded into the MemPalace apt layer). Drop a guarded
+# auto-attach snippet into /etc/profile.d/ (image layer, not home — /home/coder is
+# a Docker volume that shadows the image at runtime, so anything written under home
+# would be invisible in a running workspace). The snippet is POSIX-sh safe (sourced
+# by the login shell). It only exec-replaces the login shell with `tmux new -A -s main`
+# when ALL guards hold: interactive shell, stdout is a TTY, not already inside tmux,
+# tmux on PATH, and not a VS Code Remote-SSH / server shell (VSCODE_INJECTION or
+# VSCODE_IPC_HOOK_CLI). One-shot `coder ssh -- <cmd>` and scp/rsync are excluded by
+# the interactive + TTY guards. Fall-through is always safe — the shell continues normally.
+RUN printf '%s\n' \
+      '# /etc/profile.d/10-tmux-autoattach.sh' \
+      '# Auto-attach a persistent tmux session for interactive login shells.' \
+      '# Guards: interactive ($- has i), TTY (fd 1), not already in tmux ($TMUX),' \
+      '# tmux on PATH, not VS Code Remote-SSH (VSCODE_INJECTION/VSCODE_IPC_HOOK_CLI).' \
+      '# One-shot `coder ssh -- cmd` and scp/rsync are excluded by the interactive+TTY guards.' \
+      '# Fall-through is always safe — the parent shell continues normally.' \
+      'case "$-" in' \
+      '  *i*)' \
+      '    if [ -t 1 ] && [ -z "$TMUX" ] && command -v tmux >/dev/null 2>&1 \' \
+      '         && [ -z "$VSCODE_INJECTION" ] && [ -z "$VSCODE_IPC_HOOK_CLI" ]; then' \
+      '      exec tmux new -A -s main' \
+      '    fi' \
+      '    ;;' \
+      'esac' \
+      > /etc/profile.d/10-tmux-autoattach.sh \
+ && chmod 0644 /etc/profile.d/10-tmux-autoattach.sh
 
 # Make bash the explicit default shell. The base image already sets the coder
 # user's login shell to /bin/bash, but pin it here so the intent survives a
