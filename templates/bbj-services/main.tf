@@ -9,7 +9,7 @@
 #   - BBj installer JAR is selected from jars discovered in the asset folder (fileset)
 #   - JDK is chosen from a static Adoptium 21/25 picker (mutable = false)
 #   - BBjServices is started by its own coder_script.bbjservices resource
-#     (foreground exec, :8888 port guard) instead of a startup_script background job
+#     (detached nohup, 120s readiness wait, exits clean) instead of a startup_script background job
 #   - coder_app "bbjservices" exposes localhost:8888 via subdomain routing
 #
 # Workspace parameters (prompted in the Coder UI at create time):
@@ -26,7 +26,7 @@
 #
 # Resources:
 #   coder_agent      — workspace agent (always present; no count)
-#   coder_script     — BBjServices launch (foreground exec, dedicated dashboard log)
+#   coder_script     — BBjServices launch (detached nohup, 120s readiness wait, exits)
 #   docker_volume    — persistent /home/coder (survives stop/start)
 #   docker_image     — workspace image (built from operator host context)
 #   docker_container — ephemeral workspace container (count = start_count)
@@ -670,10 +670,22 @@ resource "coder_agent" "main" {
 }
 
 # ── BBjServices — dedicated script (WR-03 non-fatal) ─────────────────────────
-# Foreground under this script (exec): the script shows as running while
-# BBjServices is up and its output is the script's dashboard log. No pidfile —
-# the port guard is the only idempotency check (nothing else consumed the
-# pidfile; bbj-restart manages its own detached relaunch independently).
+# Detached launch model: this script starts BBjServices in a background sudo
+# child, waits up to 120 s for port 8888 to become active, then EXITS so the
+# coder_agent lifecycle sees the script as "complete" and does NOT show the
+# "workspace may be incomplete" banner in terminals.
+#
+# Why the explicit FD redirects matter:
+#   The July "output pipes were not closed after 10s" warning happened because
+#   a bare `nohup … &` child INHERITS the coder_script's stdout/stderr pipe FDs.
+#   Even though the parent shell exits, those inherited FDs remain open inside
+#   the background process, so the coder agent's pipe reader never reaches EOF
+#   and never declares the script finished — causing the never-ending lifecycle.
+#   The `</dev/null >>log 2>&1` inside the sudo child detaches ALL THREE file
+#   descriptors before BBjServices starts, so the coder_script's pipes close
+#   the instant this script exits. This fixes both the pipes-not-closed warning
+#   AND the banner. Exit 1 on failed start is deliberate: a genuinely broken
+#   BBjServices should surface as a script error in the dashboard.
 
 resource "coder_script" "bbjservices" {
   agent_id           = coder_agent.main.id
@@ -693,8 +705,22 @@ resource "coder_script" "bbjservices" {
       exit 0
     fi
 
-    echo "Starting BBjServices (foreground, as root via sudo) — this script stays running while BBjServices is up."
-    exec sudo /opt/bbx/bin/bbjservices --launchd
+    echo "Starting BBjServices (detached, as root via sudo) — launcher output goes to /tmp/bbjservices-launch.log"
+    sudo sh -c 'nohup /opt/bbx/bin/bbjservices --launchd </dev/null >>/tmp/bbjservices-launch.log 2>&1 &'
+
+    i=0
+    while [ $i -lt 120 ]; do
+      if ss -tlnp 2>/dev/null | grep -q ':8888'; then
+        echo "BBjServices up on :8888"
+        exit 0
+      fi
+      i=$((i + 1))
+      sleep 1
+    done
+
+    echo "ERROR: BBjServices did not come up on :8888 within 120s" >&2
+    tail -n 40 /tmp/bbjservices-launch.log >&2 || true
+    exit 1
   EOT
 }
 
