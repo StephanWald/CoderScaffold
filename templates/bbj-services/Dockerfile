@@ -13,10 +13,10 @@
 # for the kreuzwerker Terraform provider's in-template build as well as the CLI
 # pre-warm script.
 #
-# Build args (set by main.tf from the selected BBj stack combo and template variables):
+# Build args (set by main.tf from the workspace parameters and template variables):
 #   BASE_IMAGE      — base image (overridable via workspace_image variable)
-#   JDK             — which JDK to install: adoptium-21 | adoptium-25 (derived from combo)
-#   BBJ_JAR_NAME    — named BBj installer jar filename staged in the asset folder (derived from combo)
+#   JDK             — which JDK to install: adoptium-21 | adoptium-25 (from the jdk parameter)
+#   BBJ_JAR_NAME    — BBj installer jar filename (the jar chosen by the bbj_installer parameter)
 #   MAVEN_VERSION   — pinned Apache Maven version (3.9.x)
 #   LICENSE_SERVER  — BLS license server host:port, sed'd into playback.properties
 #
