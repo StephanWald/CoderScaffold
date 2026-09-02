@@ -616,7 +616,7 @@ resource "coder_agent" "main" {
     # Bootstraps ~/.mempalace once, scoped to the project folder. Idempotent and
     # non-fatal (WR-03).
     if command -v mempalace >/dev/null 2>&1 && [ ! -e "$HOME/.mempalace" ]; then
-      mempalace init "$PROJECT_DIR" \
+      mempalace init --yes "$PROJECT_DIR" \
         || echo "WARN: mempalace init failed; continuing" >&2
     fi
 

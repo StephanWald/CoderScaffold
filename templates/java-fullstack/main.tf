@@ -374,7 +374,7 @@ resource "coder_agent" "main" {
     # never re-inits an existing palace). Non-fatal (WR-03): a missing binary or an
     # init failure must NEVER abort the startup_script — warn and continue.
     if command -v mempalace >/dev/null 2>&1 && [ ! -e "$HOME/.mempalace" ]; then
-      mempalace init "$PROJECT_DIR" \
+      mempalace init --yes "$PROJECT_DIR" \
         || echo "WARN: mempalace init failed; continuing" >&2
     fi
   EOT
