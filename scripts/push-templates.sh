@@ -116,6 +116,107 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# jars.json staging — snapshot the jar list into each template that references
+# jars.json, so Coder's dynamic-parameters preview engine can populate the
+# bbj_installer dropdown without needing the /mnt/bbj-assets bind mount.
+#
+# Coder >=2.25 evaluates parameter HCL against the PUSHED TEMPLATE FILES only;
+# it cannot read provisioner-side mounts, so fileset(var.bbj_context_path, "*.jar")
+# returns empty in the form and the parameter degrades to a free-text box.
+# The sanctioned fix is to snapshot the jar list into a JSON file at push time.
+#
+# Logic:
+#   1. Build a sorted JSON array of the basenames of ${BBJ_ASSETS_PATH}/*.jar
+#      using plain bash (no jq).
+#   2. For each template dir whose main.tf contains the literal token "jars.json",
+#      write ${dir}jars.json with that array.
+#   3. If BBJ_ASSETS_PATH is unset/empty or has no *.jar files: warn, remove any
+#      stale jars.json from matching template dirs (so the template falls back to
+#      fileset()), and DO NOT block the push.
+# ---------------------------------------------------------------------------
+_generate_jars_json() {
+  local assets="${BBJ_ASSETS_PATH:-}"
+  local jars_count=0
+  local generated_count=0
+
+  # Collect matching template dirs (those whose main.tf references jars.json)
+  local matching_dirs=()
+  for _dir in "${PROJECT_ROOT}"/templates/*/; do
+    [[ -f "${_dir}main.tf" ]] || continue
+    if grep -q 'jars\.json' "${_dir}main.tf"; then
+      matching_dirs+=("${_dir}")
+    fi
+  done
+
+  if [[ "${#matching_dirs[@]}" -eq 0 ]]; then
+    return 0  # No templates reference jars.json — nothing to do
+  fi
+
+  # Build the JSON array using plain bash (no jq)
+  # Nullglob-safe: collect into an array, guard against empty glob expansion
+  local jar_names=()
+  if [[ -n "${assets}" && -d "${assets}" ]]; then
+    for _jar in "${assets}"/*.jar; do
+      [[ -f "${_jar}" ]] && jar_names+=("$(basename "${_jar}")")
+    done
+  fi
+
+  if [[ "${#jar_names[@]}" -gt 0 ]]; then
+    # Sort the names
+    local sorted_names
+    sorted_names="$(printf '%s\n' "${jar_names[@]}" | LC_ALL=C sort)"
+
+    # Build JSON array string — escape \ then " for correctness
+    local json="["
+    local first=1
+    while IFS= read -r name; do
+      local escaped="${name//\\/\\\\}"
+      escaped="${escaped//\"/\\\"}"
+      if [[ "${first}" -eq 1 ]]; then
+        json="${json}\"${escaped}\""
+        first=0
+      else
+        json="${json},\"${escaped}\""
+      fi
+    done <<< "${sorted_names}"
+    json="${json}]"
+    jars_count="${#jar_names[@]}"
+
+    # Write jars.json into each matching template dir
+    for _dir in "${matching_dirs[@]}"; do
+      local tname
+      tname="$(basename "${_dir%/}")"
+      printf '%s\n' "${json}" > "${_dir}jars.json"
+      echo "Generated ${tname}/jars.json (${jars_count} jar(s))"
+      generated_count=$((generated_count + 1))
+    done
+  else
+    # No jars — warn and remove any stale jars.json
+    if [[ -z "${assets}" ]]; then
+      echo "WARN: BBJ_ASSETS_PATH is not set in .env — skipping jars.json generation; the dynamic-parameters form will degrade to free-text for bbj_installer." >&2
+    elif [[ ! -d "${assets}" ]]; then
+      echo "WARN: BBJ_ASSETS_PATH (${assets}) does not exist — skipping jars.json generation." >&2
+    else
+      echo "WARN: BBJ_ASSETS_PATH (${assets}) contains no *.jar files — skipping jars.json generation." >&2
+    fi
+    for _dir in "${matching_dirs[@]}"; do
+      local tname
+      tname="$(basename "${_dir%/}")"
+      if [[ -f "${_dir}jars.json" ]]; then
+        rm -f "${_dir}jars.json"
+        echo "Removed stale ${tname}/jars.json (no jars available; template falls back to fileset())" >&2
+      fi
+    done
+  fi
+
+  if [[ "${generated_count}" -gt 0 ]]; then
+    echo "jars.json staged: ${generated_count} template dir(s) updated (${jars_count} jar(s) each)"
+  fi
+}
+
+_generate_jars_json
+
+# ---------------------------------------------------------------------------
 # Lockfile guard — ensure_template_lockfile
 #
 # Coder cannot cache providers for a template push whose directory lacks a
