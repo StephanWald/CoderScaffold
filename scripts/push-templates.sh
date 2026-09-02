@@ -116,6 +116,46 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Dockerfile asset staging — copy templates/bbj-services/Dockerfile into
+# ${BBJ_ASSETS_PATH}/Dockerfile so every push refreshes the staged copy.
+#
+# WHY THIS IS NECESSARY:
+# The bbj-services workspace image is docker-built with var.bbj_context_path
+# (the operator asset folder, bind-mounted at /mnt/bbj-assets) as the BUILD
+# CONTEXT, using the Dockerfile INSIDE that folder — not the repo copy. If the
+# staged copy drifts from the repo copy (e.g. an operator once ran a manual
+# `cp` and never re-copied after subsequent commits), the image is silently
+# built from the stale staged Dockerfile even though the repo version is current.
+# The template's `dockerfile_sha1 = try(filesha1("${var.bbj_context_path}/Dockerfile"), ...)`
+# trigger picks up the refreshed staged copy and forces an image rebuild on the
+# next workspace start — no main.tf change needed. Auto-staging keeps the two
+# in lockstep.
+#
+# Warn-and-continue philosophy: unlike the private script (which blocks on
+# missing assets), this public script must never block pushes of the non-BBj
+# templates due to a missing/unconfigured BBJ_ASSETS_PATH. All conditions below
+# emit a WARN and continue.
+# ---------------------------------------------------------------------------
+ASSETS="${BBJ_ASSETS_PATH:-}"
+if [[ -z "${ASSETS}" ]]; then
+  echo "WARN: BBJ_ASSETS_PATH is not set in .env — skipping Dockerfile asset staging for bbj-services (the staged Dockerfile in the asset folder will not be refreshed)." >&2
+elif [[ ! -d "${ASSETS}" ]]; then
+  echo "WARN: BBJ_ASSETS_PATH (${ASSETS}) does not exist — skipping Dockerfile asset staging." >&2
+elif [[ ! -f "${PROJECT_ROOT}/templates/bbj-services/Dockerfile" ]]; then
+  echo "WARN: templates/bbj-services/Dockerfile not found — skipping Dockerfile asset staging." >&2
+else
+  cp "${PROJECT_ROOT}/templates/bbj-services/Dockerfile" "${ASSETS}/Dockerfile"
+  echo "Staged templates/bbj-services/Dockerfile -> ${ASSETS}/Dockerfile"
+  # Informational prereq check — never blocking (certificate.bls and playback.properties
+  # are operator-supplied; this script does not stage them).
+  for _prereq in certificate.bls playback.properties; do
+    if [[ ! -f "${ASSETS}/${_prereq}" ]]; then
+      echo "WARN: ${ASSETS}/${_prereq} is missing — the bbj-services image build will need it (operator-supplied prerequisite; not staged by this script)." >&2
+    fi
+  done
+fi
+
+# ---------------------------------------------------------------------------
 # jars.json staging — snapshot the jar list into each template that references
 # jars.json, so Coder's dynamic-parameters preview engine can populate the
 # bbj_installer dropdown without needing the /mnt/bbj-assets bind mount.
