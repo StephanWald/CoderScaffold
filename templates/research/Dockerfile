@@ -1,0 +1,295 @@
+# templates/research/Dockerfile
+#
+# Research workspace image — extends the Python / AI workspace image with the
+# Feynman AI research agent (@companion-ai/feynman) layered on top. Built in-template
+# by docker_image.main in main.tf (build { context = path.module }). Layers a
+# build-time-selected CPython (via uv), Python dev tools, AI SDKs, JupyterLab,
+# Node.js LTS, and the Feynman research agent on top of the base image.
+#
+# Build args (set by main.tf from the workspace's coder_parameter values):
+#   BASE_IMAGE     — base image (overridable via the workspace_image variable, D-02)
+#   PYTHON_VERSION — which CPython to install: 3.13 | 3.12 | 3.11 (default 3.13)
+#
+# Everything is installed SYSTEM-WIDE (/opt, /usr) — NOT under /home/coder, which
+# is a persistent Docker volume that shadows anything baked into the user's home
+# at runtime. /opt and /usr are outside that mount, so the toolchain survives.
+
+ARG BASE_IMAGE=codercom/enterprise-base:ubuntu
+FROM ${BASE_IMAGE}
+
+ARG PYTHON_VERSION=3.13
+
+# Root for system installs; the base image drops back to the coder user at the end.
+USER root
+
+# ── Node.js LTS via NodeSource ───────────────────────────────────────────────
+# Provides node + npm/npx on the system PATH (needed for Claude Code CLI, GSD,
+# and the node JSON merges in startup_script). Baked into the layer — no per-boot cost.
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs ca-certificates \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── Playwright chromium + OS deps ────────────────────────────────────────────
+# Bakes the chromium browser AND its shared libs (libnss3, libatk, ...) so the
+# Playwright MCP server (registered in the agent startup_script) can drive a
+# headless browser for self-serve UI testing. Done at build time so workspace
+# boot has zero per-start cost. --with-deps pulls the apt libraries.
+#
+# PLAYWRIGHT_BROWSERS_PATH pins the browser to a world-readable SYSTEM path
+# instead of the installing user's ~/.cache. This layer runs as root, but the
+# workspace runs as `coder` with a volume-mounted $HOME — a browser left under
+# /root/.cache would be invisible to the runtime user. ENV persists into the
+# running container, so the `coder`-user `npx @playwright/mcp` inherits the same
+# path and finds the baked browser; chmod o+rX keeps it readable/executable for
+# the non-root runtime user.
+# NOTE: the baked chromium revision is the one shipped with `playwright@latest`
+# at BUILD time; if a much newer @playwright/mcp is fetched at runtime it may
+# expect a different revision and try to re-download into this path. Rebuild the
+# image to refresh, or pin both to matching versions if drift becomes an issue.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx -y playwright@latest install --with-deps chromium \
+ && chmod -R o+rX /ms-playwright
+
+# ── uv (Astral) — system-wide Python toolchain manager ───────────────────────
+# Installs the standalone uv + uvx binaries to /usr/local/bin so all users get
+# them on PATH. UV_PYTHON_INSTALL_DIR, UV_TOOL_DIR, UV_TOOL_BIN_DIR are set to
+# /opt/* so neither managed Pythons nor tool shims touch /home/coder.
+# main.tf also exports these same vars in the agent env for non-login-shell parity.
+RUN set -eux; \
+    curl -fsSL https://astral.sh/uv/install.sh -o /tmp/uv-install.sh; \
+    UV_INSTALL_DIR=/usr/local/bin sh /tmp/uv-install.sh --no-modify-path; \
+    rm -f /tmp/uv-install.sh; \
+    uv --version; \
+    command -v uvx
+
+# ── System-wide uv env for login shells ──────────────────────────────────────
+# Exports the uv install dirs so login shells pick up the same paths.
+# main.tf mirrors these in the coder_agent env for non-login-shell parity.
+RUN printf '%s\n' \
+      'export UV_PYTHON_INSTALL_DIR=/opt/uv-python' \
+      'export UV_TOOL_DIR=/opt/uv-tools' \
+      'export UV_TOOL_BIN_DIR=/usr/local/bin' \
+      'export PATH="/usr/local/bin:$PATH"' \
+      > /etc/profile.d/10-uv.sh \
+ && chmod 0644 /etc/profile.d/10-uv.sh
+
+# ── CPython (build-arg version) via uv — system-wide ─────────────────────────
+# Installs the selected CPython into /opt/uv-python (outside the home volume),
+# then symlinks python3 and python in /usr/local/bin so the selected version is
+# the default interpreter for all users regardless of shell type.
+RUN set -eux; \
+    UV_PYTHON_INSTALL_DIR=/opt/uv-python uv python install "${PYTHON_VERSION}"; \
+    PY_BIN=$(UV_PYTHON_INSTALL_DIR=/opt/uv-python uv python find "${PYTHON_VERSION}"); \
+    ln -sf "${PY_BIN}" /usr/local/bin/python3; \
+    ln -sf "${PY_BIN}" /usr/local/bin/python; \
+    python --version
+
+# ── Python dev tooling via uv tool — system-wide shims ───────────────────────
+# ruff (linter/formatter), mypy (type checker), pytest (test runner), ipython
+# (interactive REPL) are installed into /opt/uv-tools with shims in /usr/local/bin.
+# All land OUTSIDE /home/coder so the persistent home volume never shadows them.
+RUN set -eux; \
+    UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install ruff; \
+    UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install mypy; \
+    UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install pytest; \
+    UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install ipython; \
+    command -v ruff mypy pytest ipython
+
+# ── AI SDKs — importable from the default python ─────────────────────────────
+# Installs anthropic + claude-agent-sdk into the uv-managed CPython created above
+# (the same interpreter /usr/local/bin/python points to) so `python -c "import
+# anthropic, claude_agent_sdk"` succeeds in a fresh login shell with no venv
+# activation. Uses uv pip --python to target the exact interpreter; does NOT
+# --system into the base image's own Python. --break-system-packages is required:
+# uv-managed CPythons ship an EXTERNALLY-MANAGED marker and uv refuses to install
+# into them otherwise (live-verified failure without it, exit code 2).
+RUN set -eux; \
+    uv pip install --break-system-packages --python /usr/local/bin/python anthropic claude-agent-sdk; \
+    python -c "import anthropic; import claude_agent_sdk; print('AI SDK import OK')"
+
+# ── JupyterLab ───────────────────────────────────────────────────────────────
+# Installed as a uv tool (shim in /usr/local/bin) so `jupyter lab` is available
+# system-wide. Launched via the JupyterLab module (or coder_app fallback) in main.tf.
+# uv tool install only exposes jupyterlab's own executables (jupyter-lab,
+# jupyter-labextension, jupyter-labhub) — the bare `jupyter` launcher belongs to
+# the jupyter-core dependency and gets no shim, so link it from the tool venv.
+RUN set -eux; \
+    UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install jupyterlab; \
+    ln -sf /opt/uv-tools/jupyterlab/bin/jupyter /usr/local/bin/jupyter; \
+    jupyter --version; \
+    command -v jupyter-lab
+
+# ── Git over SSH: host keys for common forges + accept-new fallback ──────────
+# Without this, an SSH clone (e.g. git@github.com:owner/repo.git, including the
+# optional git_repo parameter) fails with "Host key verification failed": a fresh
+# container has no known_hosts entry, and the non-interactive ssh invoked by
+# `coder gitssh` refuses unverified hosts. Pre-seed the well-known forge keys into
+# the SYSTEM known_hosts (outside the volume-shadowed /home/coder, so it always
+# applies), and set StrictHostKeyChecking=accept-new globally so any other host
+# (self-hosted GitLab, etc.) is trusted-on-first-use instead of rejected.
+#
+# NOTE: this only fixes HOST verification. Authenticating to a PRIVATE repo still
+# requires the Coder-managed SSH public key to be registered with your Git host
+# (Coder prints it; add it at https://github.com/settings/ssh/new). See README.
+RUN set -eux; \
+    mkdir -p /etc/ssh /etc/ssh/ssh_config.d; \
+    for h in github.com gitlab.com bitbucket.org ssh.dev.azure.com; do \
+      ssh-keyscan -t rsa,ecdsa,ed25519 "$h" >> /etc/ssh/ssh_known_hosts 2>/dev/null \
+        || echo "WARN: ssh-keyscan $h failed; continuing" >&2; \
+    done; \
+    chmod 0644 /etc/ssh/ssh_known_hosts; \
+    printf '%s\n' 'Host *' '    StrictHostKeyChecking accept-new' \
+      > /etc/ssh/ssh_config.d/10-accept-new.conf; \
+    chmod 0644 /etc/ssh/ssh_config.d/10-accept-new.conf
+
+# ── MemPalace CLI (Python) ───────────────────────────────────────────────────
+# Local-first AI memory CLI (https://github.com/MemPalace/mempalace). Installed
+# SYSTEM-WIDE into a venv under /opt — OUTSIDE the /home/coder volume that
+# shadows home at runtime — and symlinked onto the system PATH, so it survives
+# every workspace start with no per-boot cost. Its MCP server is registered in
+# the agent startup_script; data persists under ~/.mempalace on the home volume.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv tmux \
+ && python3 -m venv /opt/mempalace \
+ && /opt/mempalace/bin/pip install --no-cache-dir mempalace \
+ && ln -sf /opt/mempalace/bin/mempalace /usr/local/bin/mempalace \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── GitHub CLI (gh) ──────────────────────────────────────────────────────────
+# Official apt repo (cli.github.com), arch-aware. Auth is per-user at runtime:
+# run `gh auth login` once per workspace — the token persists in ~/.config/gh
+# on the home volume.
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+ && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends gh \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── Docker CLI + Compose plugin (docker-outside-of-docker) ───────────────────
+# NOTHING TO INSTALL HERE. The base image (codercom/enterprise-base:ubuntu)
+# ALREADY ships the Docker CLI + Compose plugin (+ buildx) pre-installed —
+# verified: `docker --version` → 29.5.3, `docker compose version` → v5.1.4,
+# packages docker-ce-cli / docker-compose-plugin / docker-buildx-plugin present.
+#
+# DO NOT re-add an `apt-get install docker-ce-cli docker-compose-plugin` block:
+# the base image already configures Docker's apt repo at
+# /etc/apt/sources.list.d/docker.list with a dearmored keyring under
+# /usr/share/keyrings. A hand-rolled block that writes an ASCII-armored key to
+# /etc/apt/keyrings/docker.gpg and overwrites that docker.list breaks apt with
+# `NO_PUBKEY 7EA0A9C3F273FCD8`, so the install fails (exit 100) — which is
+# exactly the build failure this comment replaces.
+#
+# This template uses docker-OUTSIDE-of-docker (DooD): the pre-installed CLI +
+# Compose plugin drive the HOST Docker daemon via the socket bind-mounted by
+# main.tf (docker_container.workspace mounts /var/run/docker.sock and adds
+# group_add = [var.docker_group_id] so the coder user can reach it). A nested
+# engine is NOT used and would NOT work here — this workspace container has no
+# NET_ADMIN and cannot create namespaces, so a nested Docker daemon cannot run.
+# Because the CLI talks to the host daemon:
+#   - `docker ps` lists HOST containers, not workspace-local ones.
+#   - `docker compose up` starts stacks as SIBLING containers alongside the
+#     workspace, not children of it.
+#
+# Operator gotchas:
+#   (a) Bind-mount paths in compose files (volumes: section) resolve against the
+#       HOST filesystem, not the workspace filesystem. A path that looks correct
+#       inside the workspace may silently reference an unexpected host path.
+#   (b) Socket access grants EFFECTIVE ROOT ON THE HOST (any process in the
+#       workspace can start privileged containers, read host files via volume
+#       mounts, etc.). This is acceptable for a single-operator self-hosted setup
+#       but is NOT appropriate for a shared or multi-tenant team deployment.
+
+# ── tmux auto-attach (durable interactive sessions) ──────────────────────────
+# tmux was installed above (folded into the MemPalace apt layer). Drop a guarded
+# auto-attach snippet into /etc/profile.d/ (image layer, not home — /home/coder is
+# a Docker volume that shadows the image at runtime, so anything written under home
+# would be invisible in a running workspace). The snippet is POSIX-sh safe (sourced
+# by the login shell). It only exec-replaces the login shell with `tmux new -A -s main`
+# when ALL guards hold: interactive shell, stdout is a TTY, not already inside tmux,
+# tmux on PATH, and not a VS Code Remote-SSH / server shell (VSCODE_INJECTION or
+# VSCODE_IPC_HOOK_CLI). One-shot `coder ssh -- <cmd>` and scp/rsync are excluded by
+# the interactive + TTY guards. Fall-through is always safe — the shell continues normally.
+RUN printf '%s\n' \
+      '# /etc/profile.d/10-tmux-autoattach.sh' \
+      '# Auto-attach a persistent tmux session for interactive login shells.' \
+      '# Guards: interactive ($- has i), TTY (fd 1), not already in tmux ($TMUX),' \
+      '# tmux on PATH, not VS Code Remote-SSH (VSCODE_INJECTION/VSCODE_IPC_HOOK_CLI).' \
+      '# One-shot `coder ssh -- cmd` and scp/rsync are excluded by the interactive+TTY guards.' \
+      '# Fall-through is always safe — the parent shell continues normally.' \
+      'case "$-" in' \
+      '  *i*)' \
+      '    if [ -t 1 ] && [ -z "$TMUX" ] && command -v tmux >/dev/null 2>&1 \' \
+      '         && [ -z "$VSCODE_INJECTION" ] && [ -z "$VSCODE_IPC_HOOK_CLI" ]; then' \
+      '      exec tmux new -A -s main' \
+      '    fi' \
+      '    ;;' \
+      'esac' \
+      > /etc/profile.d/10-tmux-autoattach.sh \
+ && chmod 0644 /etc/profile.d/10-tmux-autoattach.sh
+
+# Also cover interactive NON-login shells (e.g. the Coder browser web terminal),
+# which read /etc/bash.bashrc — sourced by Ubuntu bash for interactive shells via
+# SYS_BASHRC — NOT /etc/profile.d (that path is login-shell only). /etc/bash.bashrc
+# lives on the image, unlike the volume-shadowed ~/.bashrc under /home/coder, so it
+# survives at runtime. The sourced snippet is fully self-guarded (interactive + TTY
+# + not-already-in-tmux + not-VS-Code), so sourcing it from both entry points is
+# idempotent: no double-attach, no recursion (the shell tmux spawns has $TMUX set).
+RUN printf '%s\n' \
+      '' \
+      '# Auto-attach tmux for interactive non-login shells (login shells use /etc/profile.d).' \
+      'if [ -f /etc/profile.d/10-tmux-autoattach.sh ]; then . /etc/profile.d/10-tmux-autoattach.sh; fi' \
+      >> /etc/bash.bashrc
+
+# System-wide tmux config. /etc/tmux.conf is tmux's global config file, read at
+# server start before any user config — and it lives on the image, so it survives
+# the volume-shadowed /home/coder at runtime just like the auto-attach snippet
+# above (a ~/.tmux.conf would be masked by the mounted home). Two quality-of-life
+# defaults for the browser web terminal's durable `tmux new -A -s main` session:
+#   mouse on      — wheel-scroll into scrollback, click-to-select pane/window, and
+#                   drag-to-resize; without it the web terminal can't reach tmux's
+#                   scrollback at all (tmux owns the alternate screen).
+#   history-limit — raise per-pane scrollback from tmux's 2000-line default to
+#                   50000 lines so long build/test output stays reviewable.
+RUN printf '%s\n' \
+      '# /etc/tmux.conf — system-wide defaults for the durable `tmux new -A -s main` session.' \
+      'set -g mouse on' \
+      'set -g history-limit 50000' \
+      > /etc/tmux.conf \
+ && chmod 0644 /etc/tmux.conf
+
+# Make bash the explicit default shell. The base image already sets the coder
+# user's login shell to /bin/bash, but pin it here so the intent survives a
+# base-image change, and export SHELL (unset in the base image) so non-login
+# contexts — the Coder agent web terminal, coder_script, tools that read $SHELL —
+# all agree on bash.
+RUN usermod -s /bin/bash coder
+ENV SHELL=/bin/bash
+
+# ── Feynman AI research agent (global npm install) ───────────────────────────
+# Installs Feynman (@companion-ai/feynman) — the open-source AI research agent
+# (reads papers, searches the web, writes research drafts, plans experiments,
+# cites claims; https://www.feynman.is/) — globally via npm so its binaries
+# land on the SYSTEM path (/usr/lib/node_modules with bin symlinked into
+# /usr/bin). This puts `feynman` OUTSIDE the /home/coder Docker volume that
+# shadows the user home at runtime, so Feynman survives every workspace start
+# with no per-boot reinstall cost.
+#
+# The official curl-based installer (curl -fsSL https://feynman.is | bash) is
+# deliberately NOT used: it targets ~/.local/bin and ~/.local/share/feynman,
+# which live under /home/coder and are masked by the home volume at runtime —
+# they vanish on every restart. npm -g is the correct system-path method.
+#
+# Node 24.x (from the NodeSource setup_lts.x layer above) satisfies Feynman's
+# >=22.22.0 <26 Node requirement. `feynman --version` runs in the same RUN
+# layer so a broken or renamed package fails the image build immediately
+# rather than shipping a dead binary.
+RUN set -eux; \
+    npm install -g @companion-ai/feynman; \
+    feynman --version
+
+USER coder
