@@ -288,8 +288,21 @@ ENV SHELL=/bin/bash
 # >=22.22.0 <26 Node requirement. `feynman --version` runs in the same RUN
 # layer so a broken or renamed package fails the image build immediately
 # rather than shipping a dead binary.
+#
+# After the install and version check, the package install dir is chowned to
+# coder. Feynman hard-codes its runtime setup state and workspace setup lock
+# file to paths inside its own install root
+# (/usr/lib/node_modules/@companion-ai/feynman/.feynman/...). The FEYNMAN_HOME
+# environment variable does NOT relocate these package-local paths. Because
+# `npm install -g` runs as root, the install dir is root-owned, and any
+# invocation by the runtime user `coder` fails when Feynman tries to mkdir
+# the setup lock dir (EACCES). The chown transfers ownership to coder so the
+# runtime user can acquire the setup lock without a permission error.
+# The chown must come AFTER `feynman --version` so the build-time pre-warm
+# still runs as root (avoids permission issues during the npm install itself).
 RUN set -eux; \
     npm install -g @companion-ai/feynman; \
-    feynman --version
+    feynman --version; \
+    chown -R coder:coder /usr/lib/node_modules/@companion-ai/feynman
 
 USER coder
