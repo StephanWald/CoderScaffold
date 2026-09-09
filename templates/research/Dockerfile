@@ -289,20 +289,33 @@ ENV SHELL=/bin/bash
 # layer so a broken or renamed package fails the image build immediately
 # rather than shipping a dead binary.
 #
-# After the install and version check, the package install dir is chowned to
-# coder. Feynman hard-codes its runtime setup state and workspace setup lock
-# file to paths inside its own install root
-# (/usr/lib/node_modules/@companion-ai/feynman/.feynman/...). The FEYNMAN_HOME
-# environment variable does NOT relocate these package-local paths. Because
-# `npm install -g` runs as root, the install dir is root-owned, and any
-# invocation by the runtime user `coder` fails when Feynman tries to mkdir
-# the setup lock dir (EACCES). The chown transfers ownership to coder so the
-# runtime user can acquire the setup lock without a permission error.
-# The chown must come AFTER `feynman --version` so the build-time pre-warm
-# still runs as root (avoids permission issues during the npm install itself).
+# After the install and version check, two fixups make the package usable by
+# the runtime user. Feynman hard-codes its runtime setup state and workspace
+# setup lock to paths inside its own install root
+# (/usr/lib/node_modules/@companion-ai/feynman/.feynman/...); FEYNMAN_HOME does
+# NOT relocate these package-local paths, and every invocation re-validates and
+# (re)builds that state:
+#
+#  1. rm -rf .feynman/npm — the build-time `feynman --version` bakes a restored
+#     runtime workspace into this image layer, but its integrity marker does not
+#     validate in the running container, so the first runtime invocation tries to
+#     replace the workspace via rename(). overlayfs cannot rename a directory
+#     that lives in a lower image layer (EXDEV crash). Removing the baked
+#     workspace makes the first runtime invocation restore it fresh into the
+#     container's writable layer from the .feynman/runtime-workspace.tgz archive
+#     that ships with the package (a detached worker, ~30 s, no network);
+#     subsequent runs validate clean in ~0.5 s.
+#  2. chown -R coder:coder — `npm install -g` runs as root, so the install dir
+#     is root-owned and the runtime user `coder` gets EACCES on the setup-lock
+#     mkdir (and on the workspace restore above). Ownership goes to coder so
+#     runtime invocations can write the package-local state.
+#
+# Both must come AFTER `feynman --version` so the package is validated as root
+# at build time (a broken or renamed package still fails the image build).
 RUN set -eux; \
     npm install -g @companion-ai/feynman; \
     feynman --version; \
+    rm -rf /usr/lib/node_modules/@companion-ai/feynman/.feynman/npm; \
     chown -R coder:coder /usr/lib/node_modules/@companion-ai/feynman
 
 USER coder
