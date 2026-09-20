@@ -590,6 +590,67 @@ coder templates edit python-ai \
 See `templates/python-ai/README.md` for the full feature list, push instructions, SSH clone
 notes, and the **DEFERRED LIVE-VERIFICATION CHECKLIST** that must be run on a real Coder host.
 
+### BBj / BBjServices template
+
+The `templates/bbj-services/` template builds a BBjServices workspace image from
+operator-supplied BBj installer assets. The Docker build context is the asset folder, which is
+bind-mounted read-only into the `coder` service — the provisioner reads it at `coder templates
+push` time to build the workspace image.
+
+#### Where the files go
+
+Place the following files in the `bbj-assets/` directory at the repo root. This is the default
+value of `BBJ_ASSETS_PATH` in `.env.example` (`BBJ_ASSETS_PATH=./bbj-assets`) and is
+bind-mounted read-only at `/mnt/bbj-assets` inside the `coder` service
+(`${BBJ_ASSETS_PATH:-./bbj-assets}:/mnt/bbj-assets:ro` in `compose.yaml`). Operators may
+override `BBJ_ASSETS_PATH` in `.env` to point at a different host folder.
+
+Required contents of `bbj-assets/`:
+
+| File | Description |
+|------|-------------|
+| `BBj-25.12.jar`, `BBj-26.01.jar`, … | One or more BBj installer `*.jar` files. Each becomes a selectable option in the `bbj_installer` dropdown at workspace creation. |
+| `certificate.bls` | BBj license certificate. |
+| `playback.properties` | BBj playback properties file. |
+
+The `Dockerfile` is staged into the asset folder automatically by the publish script (see
+below) — operators do **not** need to copy it manually.
+
+#### Publishing the template
+
+Run the following from the repo root with the `coder` CLI logged in:
+
+```bash
+./scripts/push-templates.sh
+```
+
+This script does two things that are specific to the BBj assets:
+
+1. **Stages `templates/bbj-services/Dockerfile`** into the `bbj-assets/` folder so the Docker
+   build context stays in lockstep with the committed Dockerfile. Without this, the image would
+   silently build from a stale staged copy if the repo Dockerfile was updated since the last
+   manual copy.
+
+2. **Generates a `jars.json` snapshot** — a sorted JSON array of the `*.jar` basenames found in
+   `bbj-assets/` — into the `templates/bbj-services/` directory. Coder ≥ 2.25 evaluates
+   parameter HCL against the **pushed template files only** and cannot read the `/mnt/bbj-assets`
+   bind mount at form-evaluation time, so `fileset()` alone would degrade the `bbj_installer`
+   parameter to a free-text box. The `jars.json` snapshot is what populates the dropdown in the
+   Create Workspace form.
+
+If `BBJ_ASSETS_PATH` is unset or the folder contains no `*.jar` files, the script warns and
+skips `jars.json` generation without blocking pushes of the other templates — the dropdown
+falls back to free-text entry in that case.
+
+#### Adding a new BBj installer JAR
+
+After copying a new `*.jar` into `bbj-assets/`, re-run `./scripts/push-templates.sh` to
+regenerate the `jars.json` snapshot. Until the script is re-run and the template is re-pushed,
+the new JAR is buildable via free-text or the API but does **not** appear in the dropdown.
+
+See `templates/bbj-services/main.tf` for the full parameter set (`git_repo`, `bbj_installer`,
+`jdk`, and advanced BBjServices options).
+
 ### Docker Socket Permissions
 
 If workspace provisioning fails with a permission error on `/var/run/docker.sock`, the `coder`
