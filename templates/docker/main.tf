@@ -408,6 +408,9 @@ resource "docker_image" "main" {
 
   triggers = {
     dockerfile_sha1 = filesha1("${path.module}/Dockerfile")
+    # Staged by push-templates.sh at push time (gitignored copy); try() yields ""
+    # when absent locally so terraform validate/fmt pass without the staged file.
+    selftest_sha1 = try(filesha1("${path.module}/claude-share-selftest.sh"), "")
   }
 
   keep_locally = true
@@ -569,3 +572,20 @@ module "claude-code" {
 }
 
 # ── [END REUSABLE] ────────────────────────────────────────────────────────────
+
+# ── Self-Test app ─────────────────────────────────────────────────────────────
+# Command-type coder_app (has `command`, no `url`): the button opens a web
+# terminal running the shared-Claude/MemPalace self-test baked into the image at
+# /usr/local/bin/claude-share-selftest (staged into the build context by
+# scripts/push-templates.sh). Exit 0 = all checks passed. No healthcheck — that
+# is a url-app-only feature.
+resource "coder_app" "self_test" {
+  count        = data.coder_workspace.me.start_count
+  agent_id     = coder_agent.main.id
+  slug         = "self-test"
+  display_name = "Self-Test"
+  command      = "/usr/local/bin/claude-share-selftest all"
+  icon         = "/icon/terminal.svg"
+  share        = "owner"
+  order        = 3
+}

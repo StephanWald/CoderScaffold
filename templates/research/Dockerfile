@@ -318,4 +318,14 @@ RUN set -eux; \
     rm -rf /usr/lib/node_modules/@companion-ai/feynman/.feynman/npm; \
     chown -R coder:coder /usr/lib/node_modules/@companion-ai/feynman
 
+# Shared-Claude self-test — operator-facing diagnostic for the per-owner shared
+# Claude volume (~/.claude-shared) + MemPalace wiring. The script is staged into
+# this build context by scripts/push-templates.sh (the docker build context only
+# sees the template dir; the canonical, reviewed source lives at
+# scripts/claude-share-selftest.sh in the repo). Installed at a system path so
+# the volume-shadowed /home/coder can't hide it; run via the "Self-Test"
+# workspace button or: /usr/local/bin/claude-share-selftest all
+COPY claude-share-selftest.sh /usr/local/bin/claude-share-selftest
+RUN chmod 0755 /usr/local/bin/claude-share-selftest
+
 USER coder

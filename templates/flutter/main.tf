@@ -381,6 +381,23 @@ resource "coder_agent" "main" {
         || echo "WARN: mempalace init failed; continuing" >&2
     fi
 
+    # ── GSD MemPalace capability — enable for a cloned GSD-managed project ────
+    # If the cloned project is GSD-managed (.planning/config.json present) and
+    # gsd-tools is installed (on the shared per-owner ~/.claude volume), flip
+    # mempalace.enabled to true so GSD recall/capture uses MemPalace by default.
+    # config-get first: skip the write entirely when already enabled (idempotent,
+    # no gratuitous writes). Disclosed trade-off (operator-accepted): when the
+    # committed config has mempalace disabled, this write dirties the cloned
+    # repo's working tree. WR-03: every path is non-fatal under set -e — warn
+    # and continue, never abort startup.
+    GSD_TOOLS="$HOME/.claude/gsd-core/bin/gsd-tools.cjs"
+    if [ -f "$GSD_TOOLS" ] && [ -f "$PROJECT_DIR/.planning/config.json" ]; then
+      if [ "$(node "$GSD_TOOLS" config-get mempalace.enabled --project-dir "$PROJECT_DIR" 2>/dev/null)" != "true" ]; then
+        node "$GSD_TOOLS" config-set mempalace.enabled true --project-dir "$PROJECT_DIR" \
+          || echo "WARN: could not enable GSD MemPalace in $PROJECT_DIR; continuing" >&2
+      fi
+    fi
+
   EOT
 
   env = {
@@ -491,6 +508,9 @@ resource "docker_image" "main" {
   triggers = {
     dockerfile_sha1 = filesha1("${path.module}/Dockerfile")
     flutter_channel = data.coder_parameter.flutter_channel.value
+    # Staged by push-templates.sh at push time (gitignored copy); try() yields ""
+    # when absent locally so terraform validate/fmt pass without the staged file.
+    selftest_sha1 = try(filesha1("${path.module}/claude-share-selftest.sh"), "")
   }
 
   keep_locally = true
@@ -635,4 +655,21 @@ module "claude-code" {
   agent_id            = coder_agent.main.id
   anthropic_api_key   = var.anthropic_api_key
   install_claude_code = true
+}
+
+# ── Self-Test app ─────────────────────────────────────────────────────────────
+# Command-type coder_app (has `command`, no `url`): the button opens a web
+# terminal running the shared-Claude/MemPalace self-test baked into the image at
+# /usr/local/bin/claude-share-selftest (staged into the build context by
+# scripts/push-templates.sh). Exit 0 = all checks passed. No healthcheck — that
+# is a url-app-only feature.
+resource "coder_app" "self_test" {
+  count        = data.coder_workspace.me.start_count
+  agent_id     = coder_agent.main.id
+  slug         = "self-test"
+  display_name = "Self-Test"
+  command      = "/usr/local/bin/claude-share-selftest all"
+  icon         = "/icon/terminal.svg"
+  share        = "owner"
+  order        = 4
 }
