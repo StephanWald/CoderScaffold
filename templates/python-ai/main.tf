@@ -369,15 +369,41 @@ resource "coder_agent" "main" {
       fi
     fi
 
+    # ── MemPalace — relocate the palace onto the per-owner shared volume ──────
+    # The palace lives at $CLAUDE_SHARED/mempalace (per-owner Docker volume, the
+    # same one that carries ~/.claude above), so memories captured in one
+    # workspace are visible in every other workspace of the same owner.
+    # ~/.mempalace becomes a symlink so the CLI/MCP server work unchanged.
+    # WR-01: a pre-existing real ~/.mempalace is migrated first and removed ONLY
+    # if the copy succeeded or the source was empty — a masked copy failure on a
+    # non-empty dir must NEVER be followed by rm -rf.
+    # WR-03: every step is non-fatal under set -e — warn and continue.
+    mkdir -p "$CLAUDE_SHARED/mempalace" \
+      || echo "WARN: could not create $CLAUDE_SHARED/mempalace; continuing" >&2
+    if [ ! -L "$HOME/.mempalace" ] && [ -d "$HOME/.mempalace" ]; then
+      if cp -an "$HOME/.mempalace/." "$CLAUDE_SHARED/mempalace/" 2>/dev/null \
+         || [ -z "$(ls -A "$HOME/.mempalace" 2>/dev/null)" ]; then
+        rm -rf "$HOME/.mempalace" \
+          || echo "WARN: could not remove migrated ~/.mempalace; continuing" >&2
+      else
+        echo "WARN: could not migrate ~/.mempalace into $CLAUDE_SHARED/mempalace; leaving original in place" >&2
+      fi
+    fi
+    ln -sfn "$CLAUDE_SHARED/mempalace" "$HOME/.mempalace" \
+      || echo "WARN: could not symlink ~/.mempalace; continuing" >&2
+
     # ── MemPalace — initialize the palace for the project ─────────────────────
-    # Bootstraps ~/.mempalace (local ChromaDB store) once, scoped to the project
-    # folder, so MemPalace recall/capture works from first start. PROJECT_DIR is
-    # the cloned repo path when the optional git_repo parameter was supplied, else
-    # $HOME — so init is best-effort whether or not a repo was cloned. Guarded on
-    # the `mempalace` CLI being present AND ~/.mempalace being absent (idempotent:
-    # never re-inits an existing palace). Non-fatal (WR-03): a missing binary or an
-    # init failure must NEVER abort the startup_script — warn and continue.
-    if command -v mempalace >/dev/null 2>&1 && [ ! -e "$HOME/.mempalace" ]; then
+    # Bootstraps the shared palace ($CLAUDE_SHARED/mempalace, reached via the
+    # ~/.mempalace symlink) once, scoped to the project folder, so MemPalace
+    # recall/capture works from first start. PROJECT_DIR is the cloned repo path
+    # when the optional git_repo parameter was supplied, else $HOME — so init is
+    # best-effort whether or not a repo was cloned. Guarded on the `mempalace`
+    # CLI being present AND the shared palace being empty/uninitialized —
+    # ~/.mempalace is now always a symlink, so an absence test would never fire
+    # (idempotent: never re-inits an existing palace). Non-fatal (WR-03): a
+    # missing binary or an init failure must NEVER abort the startup_script —
+    # warn and continue.
+    if command -v mempalace >/dev/null 2>&1 && [ -z "$(ls -A "$CLAUDE_SHARED/mempalace" 2>/dev/null)" ]; then
       mempalace init --yes "$PROJECT_DIR" \
         || echo "WARN: mempalace init failed; continuing" >&2
     fi
