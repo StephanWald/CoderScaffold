@@ -328,4 +328,15 @@ RUN set -eux; \
 COPY claude-share-selftest.sh /usr/local/bin/claude-share-selftest
 RUN chmod 0755 /usr/local/bin/claude-share-selftest
 
+# ── OpenAI Codex CLI ─────────────────────────────────────────────────────────
+# Codex CLI (@openai/codex) baked system-wide via npm -g — lands under
+# /usr/local, OUTSIDE the /home/coder volume that shadows home at runtime, so
+# the binary survives every workspace start (same system-path rationale as the
+# Feynman npm -g layer above). Version pinned via an overridable ARG per the
+# repo's pin-don't-float convention; node/npm are guaranteed present from the
+# NodeSource block above (no apt work needed). Config/auth persist per owner:
+# ~/.codex is symlinked onto the shared volume in main.tf.
+ARG CODEX_VERSION=0.155.1
+RUN npm install -g @openai/codex@${CODEX_VERSION}
+
 USER coder

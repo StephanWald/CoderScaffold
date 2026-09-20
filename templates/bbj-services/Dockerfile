@@ -361,4 +361,15 @@ RUN npx -y playwright@latest install --with-deps chromium \
 RUN usermod -s /bin/bash coder
 ENV SHELL=/bin/bash
 
+# ── OpenAI Codex CLI ─────────────────────────────────────────────────────────
+# Codex CLI (@openai/codex) baked system-wide via npm -g — lands under
+# /usr/local, OUTSIDE the /home/coder volume that shadows home at runtime, so
+# the binary survives every workspace start. Version pinned via an overridable
+# ARG per the repo's pin-don't-float convention; node/npm are inherited from
+# the NodeSource install in the `base` stage (FROM base AS final — no apt work
+# needed). Config/auth persist per owner: ~/.codex is symlinked onto the
+# shared volume in main.tf.
+ARG CODEX_VERSION=0.155.1
+RUN npm install -g @openai/codex@${CODEX_VERSION}
+
 USER coder
