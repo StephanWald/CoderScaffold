@@ -257,6 +257,51 @@ _generate_jars_json() {
 _generate_jars_json
 
 # ---------------------------------------------------------------------------
+# Self-test script staging — copy the canonical scripts/claude-share-selftest.sh
+# into each template dir whose Dockerfile COPYs it, so the docker build context
+# (which only sees the template dir) can bake it at /usr/local/bin.
+#
+# The staged per-template copies are gitignored (templates/*/claude-share-selftest.sh)
+# and rebuilt on every push — the single reviewed source of truth stays at
+# scripts/. Templates are auto-scoped by grepping each Dockerfile for the
+# literal filename: only templates wired with the COPY are staged (bbj-services
+# never is). Each template's docker_image triggers hash the staged copy
+# (try(filesha1(...))), so a refreshed copy forces an image rebuild on the next
+# workspace start.
+#
+# Warn-and-continue philosophy (WR-03): a missing canonical script must never
+# block a push — emit a WARN and return 0.
+# ---------------------------------------------------------------------------
+_stage_selftest_script() {
+  local src="${PROJECT_ROOT}/scripts/claude-share-selftest.sh"
+  local staged_count=0
+
+  if [[ ! -f "${src}" ]]; then
+    echo "WARN: ${src} not found — skipping self-test script staging (templates that COPY it will fail their image build until it is restored)." >&2
+    return 0
+  fi
+
+  for _dir in "${PROJECT_ROOT}"/templates/*/; do
+    [[ -f "${_dir}Dockerfile" ]] || continue
+    if grep -q 'claude-share-selftest\.sh' "${_dir}Dockerfile"; then
+      local tname
+      tname="$(basename "${_dir%/}")"
+      if cp "${src}" "${_dir}claude-share-selftest.sh"; then
+        staged_count=$((staged_count + 1))
+      else
+        echo "WARN: could not stage claude-share-selftest.sh into ${tname}/ — its image build may fail; continuing." >&2
+      fi
+    fi
+  done
+
+  if [[ "${staged_count}" -gt 0 ]]; then
+    echo "claude-share-selftest.sh staged: ${staged_count} template dir(s) updated"
+  fi
+}
+
+_stage_selftest_script
+
+# ---------------------------------------------------------------------------
 # Lockfile guard — ensure_template_lockfile
 #
 # Coder cannot cache providers for a template push whose directory lacks a
