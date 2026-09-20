@@ -354,6 +354,30 @@ resource "coder_agent" "main" {
     ln -sfn "$CLAUDE_SHARED/mempalace" "$HOME/.mempalace" \
       || echo "WARN: could not symlink ~/.mempalace; continuing" >&2
 
+    # ── Codex CLI — share config/auth on the per-owner shared volume ──────────
+    # Codex config/auth/sessions live at $CLAUDE_SHARED/codex (the same
+    # per-owner Docker volume that carries ~/.claude above), so signing in to
+    # Codex (ChatGPT sign-in → auth.json) once makes every other workspace of
+    # the same owner authenticated. ~/.codex becomes a symlink so the codex
+    # CLI works unchanged.
+    # WR-01: a pre-existing real ~/.codex is migrated first and removed ONLY
+    # if the copy succeeded or the source was empty — a masked copy failure on
+    # a non-empty dir must NEVER be followed by rm -rf.
+    # WR-03: every step is non-fatal under set -e — warn and continue.
+    mkdir -p "$CLAUDE_SHARED/codex" \
+      || echo "WARN: could not create $CLAUDE_SHARED/codex; continuing" >&2
+    if [ ! -L "$HOME/.codex" ] && [ -d "$HOME/.codex" ]; then
+      if cp -an "$HOME/.codex/." "$CLAUDE_SHARED/codex/" 2>/dev/null \
+         || [ -z "$(ls -A "$HOME/.codex" 2>/dev/null)" ]; then
+        rm -rf "$HOME/.codex" \
+          || echo "WARN: could not remove migrated ~/.codex; continuing" >&2
+      else
+        echo "WARN: could not migrate ~/.codex into $CLAUDE_SHARED/codex; leaving original in place" >&2
+      fi
+    fi
+    ln -sfn "$CLAUDE_SHARED/codex" "$HOME/.codex" \
+      || echo "WARN: could not symlink ~/.codex; continuing" >&2
+
     # ── MemPalace — initialize the palace for the cloned repo ─────────────────
     # Bootstraps the shared palace ($CLAUDE_SHARED/mempalace, reached via the
     # ~/.mempalace symlink) once, scoped to the cloned CoderScaffold checkout, so
@@ -395,6 +419,11 @@ resource "coder_agent" "main" {
     # Real (symlink-free) Claude config dir — see the CLAUDE_CONFIG_DIR block
     # in startup_script. Makes GSD updates work and is honored by Claude Code.
     CLAUDE_CONFIG_DIR = "/home/coder/.claude-shared/dot-claude"
+
+    # Physical (symlink-free) shared Codex config root — same rationale as
+    # CLAUDE_CONFIG_DIR: Codex honors CODEX_HOME as its config root, and GSD's
+    # runtime shim probes $CODEX_HOME before falling back to ~/.codex.
+    CODEX_HOME = "/home/coder/.claude-shared/codex"
   }
 
   metadata {
