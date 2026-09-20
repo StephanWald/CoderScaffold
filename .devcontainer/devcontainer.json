@@ -25,9 +25,15 @@
 		"ghcr.io/devcontainers/features/terraform:1": {}
 	},
 
-	// Install shellcheck for bash script linting. The terraform feature does not
-	// include it. Non-fatal: if apt fails (e.g. offline build), continue anyway.
-	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y shellcheck || echo 'WARN: shellcheck install failed; continuing'",
+	// Post-create setup, chained with `;` so no single failure aborts the rest;
+	// each risky step ends in a WARN-and-continue fallback (non-fatal):
+	//   1. shellcheck for bash script linting (the terraform feature lacks it).
+	//   2. mempalace CLI in a private venv ($HOME/.mempalace-venv), symlinked to
+	//      /usr/local/bin — mirrors the workspace-image idiom; guarded on python3
+	//      (the javascript-node base does not guarantee it).
+	//   3. mempalace MCP server registration: node-merges mcpServers.mempalace
+	//      into ~/.claude.json (same merge idiom the workspace templates use).
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y shellcheck || echo 'WARN: shellcheck install failed; continuing'; command -v python3 >/dev/null 2>&1 && python3 -m venv \"$HOME/.mempalace-venv\" && \"$HOME/.mempalace-venv/bin/pip\" install --no-cache-dir mempalace && sudo ln -sf \"$HOME/.mempalace-venv/bin/mempalace\" /usr/local/bin/mempalace || echo 'WARN: mempalace install skipped (no python3 or install failed); continuing'; command -v node >/dev/null 2>&1 && node -e 'const fs=require(\"fs\"),p=require(\"os\").homedir()+\"/.claude.json\";let c={};try{c=JSON.parse(fs.readFileSync(p,\"utf8\")||\"{}\")}catch{}c.mcpServers=c.mcpServers||{};c.mcpServers.mempalace={command:\"mempalace\",args:[\"mcp\",\"serve\"]};fs.writeFileSync(p,JSON.stringify(c,null,2))' || echo 'WARN: mempalace MCP registration skipped; continuing'",
 
 	"mounts": [
 		"source=claude-code-config,target=/home/node/.claude,type=volume"
