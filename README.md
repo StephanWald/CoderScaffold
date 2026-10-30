@@ -720,20 +720,46 @@ complementary mechanisms fix these:
 
 **Server-side persistence — tmux auto-attach (baked into workspace images)**
 
-All six workspace images install `tmux` and drop `/etc/profile.d/10-tmux-autoattach.sh`. When
-you open a browser terminal or run `coder ssh`, the login shell automatically attaches to (or
-creates) a persistent tmux session named `main`. When you disconnect or your laptop hibernates,
-the tmux session keeps running in the container. Reconnecting re-attaches the same session —
-your running processes, shell history, and working directory are exactly where you left them.
+Every workspace image installs `tmux` and drops `/etc/profile.d/10-tmux-autoattach.sh`.
+Opening the Coder **browser web terminal** automatically attaches to (or creates) a persistent
+tmux session named `main`. When you disconnect or your laptop hibernates, the tmux session keeps
+running in the container. Reopening the browser terminal re-attaches the same session -- your
+running processes, shell history, and working directory are exactly where you left them.
 
 > **Note:** This behaviour takes effect only in workspaces built from a **rebuilt** image.
 > Existing running workspaces do not pick it up until the image is rebuilt and the workspace
 > is restarted.
 
-The auto-attach snippet is guarded so it only fires for real interactive TTY login shells. It
-is **inert** for non-interactive shells, one-shot `coder ssh -- <cmd>` invocations, scp/rsync,
-and VS Code Remote-SSH server shells (which must stay bare for VS Code's own reconnect and
-shell integration to work).
+**Web terminal only.** Every other interactive shell gets a bare shell: `coder ssh`, plain
+`ssh coder.<workspace>` after `coder config-ssh`, herdr terminals, and JetBrains Gateway and
+VS Code (Remote-SSH / code-server) terminals. Those tools manage their own panes, sessions and
+reconnects, and funnelling them all into one `main` session made every new terminal land in the
+same tmux session. The snippet also stays inert for non-interactive shells, one-shot
+`coder ssh -- <cmd>` invocations, and scp/rsync.
+
+Detection: the web terminal's shell is started directly by the Coder agent and has no `SSH_TTY`;
+SSH PTY sessions carry `SSH_TTY`, and herdr/IDE shells have a different parent process. To
+diagnose a shell, run `echo "$SSH_TTY"; cat /proc/$PPID/comm` -- in the web terminal this prints
+an empty line and `coder`.
+
+**Opting in or out.** `CODER_TMUX_AUTOATTACH=1` forces the attach (it still never fires inside
+VS Code or an existing tmux), and `CODER_TMUX_AUTOATTACH=0` disables it for any shell that
+receives the variable. For a one-off tmux session over SSH:
+
+```bash
+ssh -o SetEnv=CODER_TMUX_AUTOATTACH=1 coder.<workspace>
+```
+
+To make that persistent, add a `SetEnv CODER_TMUX_AUTOATTACH=1` line under `Host coder.*` in
+`~/.ssh/config`. Caveat: that line applies to EVERY SSH connection to those hosts, including
+herdr's and IDE connections, whose shells would then attach too -- prefer the per-invocation
+form if you use herdr. From any bare shell, `tmux new -A -s main` joins the same session the
+web terminal uses. For SSH sessions, combine the opt-in with the keepalives below.
+
+**herdr.** [herdr](https://herdr.dev) works against a workspace after `coder config-ssh`;
+register it with `hc machine add coder.<workspace> --name <workspace>`. herdr terminals are
+bare shells, so herdr's own session logic owns persistence. Leave `CODER_TMUX_AUTOATTACH`
+unset for herdr connections.
 
 **Client-side liveness — SSH keepalives**
 
