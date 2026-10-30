@@ -5,7 +5,7 @@ status: Awaiting next milestone
 stopped_at: Phase 04 marked complete (UAT 4/5 live-passed, owner-isolation acknowledged gate). Milestone v1.1 100% complete.
 last_updated: "2026-10-30T06:00:00.000Z"
 last_activity: 2026-10-30
-last_activity_desc: "Completed quick task 261030-94f: tmux auto-attach limited to the Coder browser web terminal (SSH_TTY unset + parent comm coder); coder ssh / herdr / IDE shells bare; CODER_TMUX_AUTOATTACH override; README + herdr note; 9 Dockerfiles (7 public + 2 CoderPrivate). Commits 28e36b2, ac3f9cc, CoderPrivate 31e2bfa."
+last_activity_desc: "Completed quick task 261030-94f: tmux auto-attach limited to the Coder browser web terminal (SSH_TTY unset + parent comm coder); coder ssh / herdr / IDE shells bare; CODER_TMUX_AUTOATTACH override; README + herdr note; 9 Dockerfiles (7 public + 2 CoderPrivate). Commits 28e36b2, ac3f9cc, CoderPrivate 6bef074 (rebased from 31e2bfa)."
 state_head: ac3f9cc1cde8a3cb8aeaa68af6fa7d6f042ca6d6
 progress:
   total_phases: 0
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-18)
 Phase: Milestone v1.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-10-30 — Completed quick task 261030-94f: tmux auto-attach restricted to the Coder browser web terminal — /etc/profile.d/10-tmux-autoattach.sh in all 7 public + 2 CoderPrivate Dockerfiles now attaches `main` only when SSH_TTY is unset AND /proc/$PPID/comm is the `coder` agent (web terminal reconnecting PTY); `coder ssh`, plain ssh, herdr (hc-spawned shells), JetBrains/VS Code terminals get a bare shell; CODER_TMUX_AUTOATTACH=1/0 override via `ssh -o SetEnv=`. README section rewritten + herdr note. dash -n + 9-way md5 parity PASS; `sh -n` denied by permission layer; docker build --check skipped (daemon down). Live gate: push templates, rebuild, verify web terminal attaches / ssh + herdr bare (infra-needs-live-deploy-gate). Commits 28e36b2, ac3f9cc; CoderPrivate 31e2bfa (local clone behind jff commits — pull --rebase before push).
+Last activity: 2026-10-30 — Completed quick task 261030-94f: tmux auto-attach restricted to the Coder browser web terminal — /etc/profile.d/10-tmux-autoattach.sh in all 7 public + 2 CoderPrivate Dockerfiles now attaches `main` only when SSH_TTY is unset AND /proc/$PPID/comm is the `coder` agent (web terminal reconnecting PTY); `coder ssh`, plain ssh, herdr (hc-spawned shells), JetBrains/VS Code terminals get a bare shell; CODER_TMUX_AUTOATTACH=1/0 override via `ssh -o SetEnv=`. README section rewritten + herdr note. dash -n + 9-way md5 parity PASS; `sh -n` denied by permission layer; docker build --check skipped (daemon down). Live gate: push templates, rebuild, verify web terminal attaches / ssh + herdr bare (infra-needs-live-deploy-gate). Commits 28e36b2, ac3f9cc; CoderPrivate 6bef074 (rebased from 31e2bfa) (local clone behind jff commits — pull --rebase before push).
 
 Previous activity: 2026-09-20 — Completed quick task 260920-osn: README gains a "BBj / BBjServices template" section documenting the BBj install-file workflow — place installer `*.jar`s + `certificate.bls` + `playback.properties` in `bbj-assets/` (BBJ_ASSETS_PATH default, mounted ro at /mnt/bbj-assets), then run `./scripts/push-templates.sh` (stages the Dockerfile, regenerates the jars.json dropdown snapshot). Commit d9d1dde.
 
