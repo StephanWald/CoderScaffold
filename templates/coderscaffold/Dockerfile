@@ -85,14 +85,14 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 #       but is NOT appropriate for a shared or multi-tenant team deployment.
 
 # ── tmux (terminal multiplexer for durable interactive sessions) ─────────────
-# Installs tmux so that interactive workspace sessions survive client disconnect
+# Installs tmux so that Coder browser web terminal sessions survive client disconnect
 # or hibernate. The guarded auto-attach profile.d snippet below (10-tmux-autoattach.sh)
-# wraps every interactive login shell in a persistent tmux session named `main`;
-# reconnecting via the browser terminal or `coder ssh` re-attaches the same live
-# session instead of starting a dead new one. tmux runs as the unprivileged `coder`
-# user — no new privilege boundary. Installed into /usr (outside /home/coder) so
-# the binary survives the home-volume mount at runtime. Takes effect only after
-# an image REBUILD — existing running workspaces need a rebuild to pick this up.
+# wraps the browser web terminal's shell in a persistent tmux session named `main`;
+# reopening the browser terminal re-attaches the same live session instead of starting
+# a dead new one. SSH, herdr and IDE shells stay bare (see the snippet comment below).
+# tmux runs as the unprivileged `coder` user — no new privilege boundary. Installed
+# into /usr (outside /home/coder) so the binary survives the home-volume mount at
+# runtime. Takes effect only after an image REBUILD — existing running workspaces need a rebuild to pick this up.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tmux \
  && apt-get clean \
@@ -101,26 +101,48 @@ RUN apt-get update \
 # Drop a guarded auto-attach snippet into /etc/profile.d/ (image layer, not home
 # — /home/coder is a Docker volume that shadows the image at runtime, so anything
 # written under home would be invisible in a running workspace). The snippet is
-# POSIX-sh safe (it is sourced by the login shell, not executed as bash). It only
-# exec-replaces the login shell with `tmux new -A -s main` when ALL guards hold:
-# interactive shell, stdout is a TTY, not already inside tmux, tmux on PATH, and
-# not a VS Code Remote-SSH / server shell (which sets VSCODE_INJECTION or
-# VSCODE_IPC_HOOK_CLI and must stay bare for its own reconnect + shell integration).
-# Non-interactive shells, one-shot `coder ssh -- <cmd>` invocations, and scp/rsync
-# are all excluded by the interactive + TTY guards. The fall-through path must never
-# exit or return, or every non-matching shell dies.
+# POSIX-sh safe (it is sourced by the login shell, not executed as bash).
+# It exec-replaces the shell with `tmux new -A -s main` ONLY in the Coder browser
+# web terminal. Base guards: interactive shell, stdout is a TTY, not already inside
+# tmux, tmux on PATH, and not a VS Code Remote-SSH / server shell (VSCODE_INJECTION
+# or VSCODE_IPC_HOOK_CLI). Web-terminal detection: SSH_TTY unset (the Coder agent sets
+# it only for SSH PTY sessions) AND the parent process is the agent binary `coder`
+# (/proc/$PPID/comm). So `coder ssh`, plain ssh via config-ssh, herdr terminals,
+# JetBrains Gateway and VS Code terminals get a bare shell — those tools manage their
+# own panes/sessions. Per-session override: CODER_TMUX_AUTOATTACH=1 always attaches,
+# =0 never (e.g. `ssh -o SetEnv=CODER_TMUX_AUTOATTACH=1 coder.<workspace>`). One-shot
+# `coder ssh -- <cmd>` and scp/rsync stay excluded by the interactive + TTY guards.
+# Fall-through never exits or returns — every non-matching shell continues normally.
 RUN printf '%s\n' \
       '# /etc/profile.d/10-tmux-autoattach.sh' \
-      '# Auto-attach a persistent tmux session for interactive login shells.' \
-      '# Guards: interactive ($- has i), TTY (fd 1), not already in tmux ($TMUX),' \
-      '# tmux on PATH, not VS Code Remote-SSH (VSCODE_INJECTION/VSCODE_IPC_HOOK_CLI).' \
-      '# One-shot `coder ssh -- cmd` and scp/rsync are excluded by the interactive+TTY guards.' \
+      '# Auto-attach the persistent tmux session `main` ONLY in the Coder browser web terminal.' \
+      '# Every other interactive shell stays bare: `coder ssh`, plain ssh via config-ssh, herdr,' \
+      '# JetBrains Gateway and VS Code terminals (those tools own their panes and sessions).' \
+      '# Why: the web terminal is a reconnecting PTY started directly by the Coder agent, so' \
+      '# SSH_TTY is unset (the agent sets it only for SSH PTY sessions) and the parent process' \
+      '# is the agent binary `coder` (/proc/$PPID/comm). SSH_CLIENT/SSH_CONNECTION are set on' \
+      '# both paths, so they cannot tell the two apart.' \
+      '# Override: CODER_TMUX_AUTOATTACH=1 always attaches, =0 never attaches, e.g.' \
+      '#   ssh -o SetEnv=CODER_TMUX_AUTOATTACH=1 coder.<workspace>' \
+      '# Diagnose a shell: echo "$SSH_TTY"; cat /proc/$PPID/comm  (web terminal: empty, coder)' \
+      '# Base guards (always apply): interactive ($- has i), TTY (fd 1), not already in tmux' \
+      '# ($TMUX), tmux on PATH, not VS Code Remote-SSH (VSCODE_INJECTION/VSCODE_IPC_HOOK_CLI).' \
       '# Fall-through is always safe — the parent shell continues normally.' \
       'case "$-" in' \
       '  *i*)' \
       '    if [ -t 1 ] && [ -z "$TMUX" ] && command -v tmux >/dev/null 2>&1 \' \
       '         && [ -z "$VSCODE_INJECTION" ] && [ -z "$VSCODE_IPC_HOOK_CLI" ]; then' \
-      '      exec tmux new -A -s main' \
+      '      case "${CODER_TMUX_AUTOATTACH:-}" in' \
+      '        1) exec tmux new -A -s main ;;' \
+      '        0) ;;' \
+      '        *)' \
+      '          if [ -z "$SSH_TTY" ]; then' \
+      '            case "$(cat /proc/$PPID/comm 2>/dev/null)" in' \
+      '              coder*) exec tmux new -A -s main ;;' \
+      '            esac' \
+      '          fi' \
+      '          ;;' \
+      '      esac' \
       '    fi' \
       '    ;;' \
       'esac' \
