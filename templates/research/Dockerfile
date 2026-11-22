@@ -364,4 +364,26 @@ RUN chmod 0755 /usr/local/bin/claude-share-selftest
 ARG CODEX_VERSION=0.155.1
 RUN npm install -g @openai/codex@${CODEX_VERSION}
 
+# ── herdr-core (hc) ──────────────────────────────────────────────────────────
+# herdr-core (hc) is the herdr runtime CLI (https://herdr.dev/core/). Baked
+# system-wide by the official installer with HC_INSTALL_DIR=/usr/local/bin, so
+# it lands OUTSIDE the /home/coder volume that shadows home at runtime (the
+# installer's default, ~/.local/bin, would be hidden by that volume) and hc
+# survives every workspace start. Version pinned via an overridable ARG per the
+# repo's pin-don't-float convention: the installer fetches that version's
+# manifest and sha256-verifies the tarball, and the RUN fails the build unless
+# hc reports the pinned version. The script is downloaded to a file and then
+# run, not piped, because /bin/sh here has no pipefail: a failed download must
+# fail the RUN instead of running a truncated script. curl, tar and sha256sum
+# come from the base image (no apt work needed). A fresh install does not start
+# a core server. herdr clients register the workspace with
+# `hc machine add coder.<workspace>` after `coder config-ssh` (see README).
+ARG HC_VERSION=0.1.21
+RUN set -eux; \
+    curl -fsSL https://releases.herdr.dev/core/install.sh -o /tmp/hc-install.sh; \
+    HC_VERSION="${HC_VERSION}" HC_INSTALL_DIR=/usr/local/bin sh /tmp/hc-install.sh; \
+    rm -f /tmp/hc-install.sh; \
+    /usr/local/bin/hc --version | grep -F "${HC_VERSION}"; \
+    test -x /usr/local/bin/herdr-core
+
 USER coder

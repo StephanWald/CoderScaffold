@@ -761,6 +761,15 @@ register it with `hc machine add coder.<workspace> --name <workspace>`. herdr te
 bare shells, so herdr's own session logic owns persistence. Leave `CODER_TMUX_AUTOATTACH`
 unset for herdr connections.
 
+Every template image ships herdr-core's `hc` CLI preinstalled at `/usr/local/bin/hc` (a
+symlink to `/usr/local/bin/herdr-core`). It sits outside the volume-backed home directory, so
+it survives workspace restarts and the workspace side needs no install step. The version is
+pinned by `ARG HC_VERSION` (currently `0.1.21`) in each `templates/*/Dockerfile`. To upgrade,
+bump `HC_VERSION` in all seven Dockerfiles and run `./scripts/push-templates.sh`; the
+Dockerfile change triggers an image rebuild on the next workspace build. Do not run
+`hc update` inside a workspace -- the binary is root-owned in the image, and the next
+workspace start resets the container to the image anyway.
+
 **Client-side liveness — SSH keepalives**
 
 Keepalives make the SSH client detect a half-open TCP link (dropped Wi-Fi, laptop sleep) within
